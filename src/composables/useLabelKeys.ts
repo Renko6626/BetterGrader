@@ -39,9 +39,10 @@ export function reduceLabelKey(state: LabelState, key: string, ctx: LabelCtx): L
 }
 
 // 视图在花名册选人确认后调用：当前页记为该生姓名页(题0)，设当前学生并前进
-export function pickStudent(state: LabelState, studentId: number): LabelResult {
+export function pickStudent(state: LabelState, studentId: number, ctx: LabelCtx): LabelResult {
   return {
-    state: { ...state, currentStudent: studentId, nextProblem: 1, picker: false, index: state.index + 1 },
+    state: { ...state, currentStudent: studentId, nextProblem: 1, picker: false,
+             index: clamp(state.index + 1, 0, ctx.pageCount - 1) },
     effect: { kind: "assign", studentId, problemNumber: 0 },
   };
 }
