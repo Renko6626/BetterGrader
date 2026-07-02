@@ -2,17 +2,16 @@
 mod commands;
 use std::sync::Mutex;
 use commands::AppState;
-use grading_core::Db;
 
 fn main() {
-    // M1 阶段用内存库跑假数据；后续计划改为按考试目录打开 exam.db
-    let db = Db::open_in_memory().expect("open db");
     tauri::Builder::default()
-        .manage(AppState(Mutex::new(db)))
+        .plugin(tauri_plugin_dialog::init())
+        .manage(AppState(Mutex::new(None)))
         .invoke_handler(tauri::generate_handler![
-            commands::seed_fake, commands::list_problems, commands::list_presets,
-            commands::list_students, commands::build_queue, commands::set_score,
-            commands::student_pages
+            commands::new_exam, commands::open_exam, commands::seed_demo_exam, commands::current_exam,
+            commands::list_problems, commands::list_presets, commands::list_students,
+            commands::build_queue, commands::set_score, commands::student_pages
+            // 注：导出命令在 Task 5 追加进本列表
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

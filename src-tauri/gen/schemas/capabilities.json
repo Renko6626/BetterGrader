@@ -1,1 +1,1 @@
-{}
+{"default":{"identifier":"default","description":"阅卷辅助器默认能力：允许 main 窗口用文件对话框选考试目录","local":true,"windows":["main"],"permissions":["core:default","dialog:allow-open"]}}
