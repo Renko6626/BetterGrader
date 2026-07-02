@@ -17,7 +17,7 @@ fn main() {
             , commands::list_pdfs, commands::read_pdf, commands::save_pdf_page,
               commands::set_comment, commands::rename_student, commands::delete_student
             , commands::add_problem, commands::add_preset, commands::delete_problem, commands::set_problem_max
-            , commands::shift_student_problems
+            , commands::shift_student_problems, commands::delete_preset
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

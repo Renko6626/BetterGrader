@@ -82,7 +82,13 @@ fn with_exam<T>(state: &tauri::State<AppState>, f: impl FnOnce(&OpenExam) -> any
 #[tauri::command] pub fn list_presets(state: tauri::State<AppState>, problem_id: i64) -> R<Vec<Preset>> { with_exam(&state, |oe| setup::list_presets(&oe.db, problem_id)) }
 #[tauri::command] pub fn list_students(state: tauri::State<AppState>) -> R<Vec<Student>> { with_exam(&state, |oe| setup::list_students(&oe.db, oe.exam_id)) }
 #[tauri::command] pub fn add_problem(state: tauri::State<AppState>, number: i64, title: String, max_score: i64) -> R<i64> { with_exam(&state, |oe| setup::add_problem(&oe.db, oe.exam_id, number, &title, max_score)) }
-#[tauri::command] pub fn add_preset(state: tauri::State<AppState>, problem_id: i64, slot: i64, label: String, points: i64) -> R<i64> { with_exam(&state, |oe| setup::add_preset(&oe.db, problem_id, slot, &label, points)) }
+#[tauri::command] pub fn add_preset(state: tauri::State<AppState>, problem_id: i64, slot: i64, label: String, points: i64) -> R<i64> {
+    if !(1..=9).contains(&slot) { return Err("判分键仅限 1-9".into()); }
+    with_exam(&state, |oe| setup::add_preset(&oe.db, problem_id, slot, &label, points))
+}
+#[tauri::command] pub fn delete_preset(state: tauri::State<AppState>, preset_id: i64) -> R<()> {
+    with_exam(&state, |oe| { oe.db.conn.execute("DELETE FROM score_preset WHERE id=?1", [preset_id])?; Ok(()) })
+}
 #[tauri::command]
 pub fn delete_problem(state: tauri::State<AppState>, problem_id: i64) -> R<()> {
     with_exam(&state, |oe| {

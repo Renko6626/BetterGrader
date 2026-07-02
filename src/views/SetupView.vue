@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { ref, onMounted, h } from "vue";
+import { ref, reactive, onMounted, h } from "vue";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
   newExam, openExam, seedDemoExam, currentExam, listProblems, listPresets, listStudents, ingestFolder,
   listPdfs, readPdf, savePdfPage, addStudent, renameStudent, deleteStudent,
-  addProblem, deleteProblem, setProblemMax,
+  addProblem, deleteProblem, setProblemMax, addPreset, deletePreset,
 } from "../api";
 import type { Problem, Preset, Student, ExamInfo } from "../types";
 import { NButton, NCard, NDataTable, NAlert, NSpace, NInputNumber } from "naive-ui";
@@ -22,6 +22,19 @@ const ingestMsg = ref("");
 const pdfMsg = ref("");
 const importing = ref(false);
 
+// 每题的"加档位"草稿（键槽/名称/分值）
+const draft = reactive<Record<number, { slot: number; label: string; points: number }>>({});
+function freeSlots(pid: number): number[] {
+  const used = new Set((presetsByProblem.value[pid] ?? []).map(pr => pr.slot));
+  return [1, 2, 3, 4, 5, 6, 7, 8, 9].filter(s => !used.has(s));
+}
+function ensureDrafts() {
+  for (const p of problems.value) {
+    const free = freeSlots(p.id);
+    if (!draft[p.id]) draft[p.id] = { slot: free[0] ?? 1, label: "", points: 0 };
+    else if (!free.includes(draft[p.id].slot)) draft[p.id].slot = free[0] ?? draft[p.id].slot;
+  }
+}
 async function refresh() {
   exam.value = await currentExam();
   if (!exam.value) { problems.value = []; students.value = []; presetsByProblem.value = {}; return; }
@@ -30,6 +43,23 @@ async function refresh() {
   for (const p of problems.value) np[p.id] = await listPresets(p.id);
   presetsByProblem.value = np;
   students.value = await listStudents();
+  ensureDrafts();
+}
+async function doAddPreset(pid: number) {
+  const d = draft[pid];
+  if (!d || !d.label.trim()) { errorMsg.value = "档位名称不能为空"; return; }
+  if (!Number.isInteger(d.slot) || d.slot < 1 || d.slot > 9) { errorMsg.value = "判分键仅限 1-9"; return; }
+  errorMsg.value = "";
+  try {
+    await addPreset(pid, d.slot, d.label.trim(), Math.floor(d.points ?? 0));
+    d.label = ""; d.points = 0;
+    await refresh();
+  } catch (e) { errorMsg.value = String(e); }
+}
+async function doDeletePreset(presetId: number) {
+  errorMsg.value = "";
+  try { await deletePreset(presetId); await refresh(); }
+  catch (e) { errorMsg.value = String(e); }
 }
 
 async function pickDir(): Promise<string | null> {
@@ -148,24 +178,34 @@ onMounted(refresh);
 
     <div v-if="exam" class="problems">
       <h3>题目设置</h3>
-      <p class="hint">每题一行、各自填满分（分值可不同）。判分前必须先建题——PDF/图片导入<b>不会</b>自动建题。</p>
-      <table v-if="problems.length" class="ptable">
-        <thead><tr><th>题号</th><th>满分</th><th>档位（判分键）</th><th></th></tr></thead>
-        <tbody>
-          <tr v-for="p in problems" :key="p.id">
-            <td>题{{ p.number }}</td>
-            <td>
-              <n-input-number :value="p.max_score" :min="0" size="small" style="width:120px"
-                              @update:value="(v: number | null) => onEditMax(p.id, v)" />
-            </td>
-            <td class="presets">
-              <span v-for="pr in presetsByProblem[p.id]" :key="pr.id">{{ pr.slot }}·{{ pr.label }}={{ pr.points }}</span>
-            </td>
-            <td><n-button size="tiny" type="error" @click="doDeleteProblem(p.id)">删除</n-button></td>
-          </tr>
-        </tbody>
-      </table>
-      <p v-else class="hint">还没有题目。</p>
+      <p class="hint">每题各自填满分；判分键（1–9）可自定义档位。判分前必须先建题——PDF/图片导入<b>不会</b>自动建题。</p>
+      <div v-for="p in problems" :key="p.id" class="prob">
+        <div class="prow">
+          <b class="pn">题{{ p.number }}</b>
+          <span>满分
+            <n-input-number :value="p.max_score" :min="0" size="small" style="width:100px"
+                            @update:value="(v: number | null) => onEditMax(p.id, v)" />
+          </span>
+          <n-button size="tiny" type="error" @click="doDeleteProblem(p.id)">删除本题</n-button>
+        </div>
+        <div class="preset-edit">
+          <span class="pl">判分键：</span>
+          <span v-for="pr in presetsByProblem[p.id]" :key="pr.id" class="chip">
+            <b>{{ pr.slot }}</b> {{ pr.label }}={{ pr.points }}
+            <a class="x" title="删除该档位" @click="doDeletePreset(pr.id)">×</a>
+          </span>
+          <span v-if="draft[p.id] && freeSlots(p.id).length" class="addp">
+            ＋键
+            <select v-model.number="draft[p.id].slot" class="sel">
+              <option v-for="s in freeSlots(p.id)" :key="s" :value="s">{{ s }}</option>
+            </select>
+            <input v-model="draft[p.id].label" placeholder="名称（如 前两问）" class="il" />
+            <input type="number" v-model.number="draft[p.id].points" placeholder="分" class="ip" />
+            <n-button size="tiny" @click="doAddPreset(p.id)">加</n-button>
+          </span>
+        </div>
+      </div>
+      <p v-if="!problems.length" class="hint">还没有题目。</p>
       <n-button size="small" @click="addOneProblem" style="margin-top:8px">＋ 添加一题</n-button>
     </div>
     <n-card v-if="students.length" :title="`花名册（${students.length} 人）`">
@@ -178,8 +218,16 @@ onMounted(refresh);
 .problems { margin: 12px 0; padding: 10px; border: 1px solid #333; }
 .problems h3 { margin: 0 0 6px; }
 .hint { color: #9aa0a6; font-size: 12px; margin: 4px 0; }
-.ptable { border-collapse: collapse; margin: 6px 0; }
-.ptable th, .ptable td { border: 1px solid #333; padding: 4px 10px; text-align: left; vertical-align: middle; }
-.ptable th { color: #9aa0a6; font-weight: normal; font-size: 12px; }
-.presets span { display: inline-block; margin-right: 10px; color: #9aa0a6; font-size: 12px; }
+.prob { border-top: 1px solid #2a2d33; padding: 8px 0; }
+.prow { display: flex; align-items: center; gap: 14px; }
+.prow .pn { min-width: 3em; }
+.preset-edit { margin-top: 6px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; color: #b8bdc4; }
+.preset-edit .pl { color: #9aa0a6; }
+.chip { border: 1px solid #3a3f47; border-radius: 3px; padding: 1px 6px; }
+.chip b { color: #7fd; margin-right: 4px; }
+.chip .x { color: #f77; cursor: pointer; margin-left: 6px; text-decoration: none; }
+.addp { display: inline-flex; align-items: center; gap: 4px; }
+.addp .sel { background: #14161a; color: #d0d0d0; border: 1px solid #555; }
+.addp .il { width: 120px; background: #14161a; color: #d0d0d0; border: 1px solid #555; padding: 2px 4px; }
+.addp .ip { width: 56px; background: #14161a; color: #d0d0d0; border: 1px solid #555; padding: 2px 4px; }
 </style>
