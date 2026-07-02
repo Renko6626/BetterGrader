@@ -71,9 +71,10 @@ function syncComment() {
 async function saveCurrentComment() {
   const u = current.value;
   if (!u) return;
+  const text = commentText.value; // 在 await 前捕获单元与文本，防止未来非受控切换写错单元
   try {
-    await setComment(u.student_id, u.problem_id, commentText.value);
-    (u as any).comment = commentText.value;
+    await setComment(u.student_id, u.problem_id, text);
+    (u as any).comment = text;
   } catch (e) {
     errorMsg.value = String(e);
   }
