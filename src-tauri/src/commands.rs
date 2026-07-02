@@ -129,8 +129,9 @@ pub fn ingest_folder(state: tauri::State<AppState>, src_dir: String) -> R<usize>
         // 目标文件名避免冲突：已存在则加 seq 前缀
         let mut dest_name = name.clone();
         if images.join(&dest_name).exists() { dest_name = format!("{seq}_{name}"); }
-        std::fs::copy(src.join(&name), images.join(&dest_name)).map_err(e)?;
-        ingest::add_ingested_page(&oe.db, oe.exam_id, &dest_name, seq).map_err(e)?;
+        // 单张失败则跳过、继续（不因一张坏图中止整批）；seq 仍推进以保序/唯一
+        if std::fs::copy(src.join(&name), images.join(&dest_name)).is_err() { seq += 1; continue; }
+        if ingest::add_ingested_page(&oe.db, oe.exam_id, &dest_name, seq).is_err() { seq += 1; continue; }
         seq += 1; count += 1;
     }
     Ok(count)
