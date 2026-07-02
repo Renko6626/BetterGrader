@@ -86,6 +86,7 @@ const average = computed(() => {
   return n ? sum / n : null;
 });
 const sidebarCollapsed = ref(false); // 左侧悬浮面板收起态（Tab 切换）
+const showHelp = ref(false);         // 快捷键浮层（? 键 / 右栏 ? 按钮）
 // 考号映射（GradingUnit 只带姓名，考号从花名册取）
 const examNoMap = ref<Record<number, string | null>>({});
 const examNo = (sid: number) => examNoMap.value[sid] ?? null;
@@ -214,6 +215,8 @@ async function applyEffect(eff: GradeEffect) {
 function onKey(e: KeyboardEvent) {
   if (commentFocused.value) return; // 评语框获焦时打字，绝不能被当成判分键拦截
   if (e.ctrlKey || e.metaKey || e.altKey) return; // 让 OS 快捷键（Ctrl+R/F、devtools 等）通过，绝不误触发落分
+  if (e.key === "?") { e.preventDefault(); showHelp.value = !showHelp.value; return; } // ? 开关快捷键浮层
+  if (showHelp.value && e.key === "Escape") { e.preventDefault(); showHelp.value = false; return; } // 浮层开着时 Esc 先关它
   if (e.key === "Tab") { e.preventDefault(); sidebarCollapsed.value = !sidebarCollapsed.value; return; } // Tab 收起/展开左侧面板（同时避免焦点移入评语框废掉判分键）
   const before = gs.value;
   const r = reduceGradeKey(gs.value, e.key, ctx.value);
@@ -291,28 +294,39 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
         </div>
       </div>
       <aside class="panel">
-        <h3>题{{ current.problem_number }}<span v-if="curMax !== ''" class="mx">满分 {{ curMax }}</span></h3>
+        <div class="phead">
+          <h3>题{{ current.problem_number }}<span v-if="curMax !== ''" class="mx">满分 {{ curMax }}</span></h3>
+          <button class="help-btn" title="快捷键（? 键）" @click="showHelp = !showHelp">?</button>
+        </div>
+        <div class="score">
+          <span class="sc-val">{{ current.total ?? "—" }}</span>
+          <span class="sc-state" :class="current.state">{{ stateLabel(current.state) }}</span>
+        </div>
+        <p v-if="gs.manual" class="manual">手动 {{ gs.buffer || "_" }}（Enter 确认）</p>
+        <div class="divider"></div>
         <ul class="preset-list">
           <li v-for="p in presets" :key="p.id"><b>{{ p.slot }}</b> {{ p.label }} <span class="pt">{{ p.points }}</span></li>
         </ul>
-        <p class="total">当前：{{ current.total ?? "—" }}｜{{ stateLabel(current.state) }}</p>
-        <p v-if="gs.manual" class="manual">手动输入：{{ gs.buffer || "_" }}（Enter 确认）</p>
         <div class="comment">
           <label>评语</label>
           <textarea v-model="commentText" placeholder="本题评语（可选）"
             @focus="commentFocused = true"
             @blur="commentFocused = false; saveCurrentComment()"></textarea>
         </div>
-        <div class="legend">
-          <div class="lh">快捷键</div>
-          <div><kbd>1–9</kbd> 档位给分　<kbd>M</kbd>/<kbd>0</kbd> 手动</div>
+      </aside>
+
+      <!-- 快捷键浮层（? 开关 / 点背景或 Esc 关） -->
+      <div v-if="showHelp" class="help-pop" @click.self="showHelp = false">
+        <div class="help-card">
+          <div class="hc-head"><span>快捷键</span><button title="关闭（Esc）" @click="showHelp = false">×</button></div>
+          <div><kbd>1–9</kbd> 档位给分　<kbd>M</kbd>/<kbd>0</kbd> 手动输入</div>
           <div><kbd>Enter</kbd> 下一份　<kbd>⌫ Backspace</kbd> 上一份</div>
-          <div><kbd>←</kbd> <kbd>→</kbd> 速览邻页　<kbd>↓</kbd>/<kbd>Esc</kbd> 复位</div>
-          <div><kbd>F</kbd> 存疑　<kbd>J</kbd> 下一存疑　<kbd>G</kbd> 总览</div>
-          <div><kbd>Tab</kbd> 收起/展开左侧分布面板</div>
+          <div><kbd>←</kbd> <kbd>→</kbd> 速览邻页　<kbd>↓</kbd>/<kbd>Esc</kbd> 复位速览</div>
+          <div><kbd>F</kbd> 存疑　<kbd>J</kbd> 下一存疑　<kbd>G</kbd> 队列总览</div>
+          <div><kbd>Tab</kbd> 收起/展开左侧分布面板　<kbd>?</kbd> 本浮层</div>
           <div class="dim">滚轮缩放 · 拖拽平移 · 双击复位</div>
         </div>
-      </aside>
+      </div>
     </div>
     <!-- 队列总览（G 打开） -->
     <n-modal :show="gs.overview" :close-on-esc="false" :mask-closable="false"
@@ -372,18 +386,32 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
 .img:active { cursor: grabbing; }
 .img img { max-width: 100%; max-height: 100%; transform-origin: center center; user-select: none; will-change: transform; }
 .placeholder { border: 1px dashed #555; padding: 40px; text-align: center; color: #888; }
-.panel { width: 260px; border-left: 1px solid #333; padding: 12px; overflow: auto; }
+.panel { width: 210px; border-left: 1px solid #333; padding: 12px; overflow: auto; display: flex; flex-direction: column; }
+.phead { display: flex; align-items: center; justify-content: space-between; }
+.phead h3 { margin: 0; }
 .panel h3 .mx { color: #9aa0a6; font-size: 12px; font-weight: normal; margin-left: 8px; }
-.preset-list { list-style: none; padding: 0; margin: 6px 0; }
-.preset-list li { margin: 2px 0; }
+.help-btn { width: 22px; height: 22px; flex: none; border-radius: 50%; border: 1px solid #3a3f47; background: #22262c; color: #9aa0a6; cursor: pointer; font-family: inherit; line-height: 1; }
+.help-btn:hover { color: #cfe3ff; border-color: #3a5570; }
+/* 记分卡：当前分放大 + 三态色块 */
+.score { display: flex; align-items: baseline; gap: 10px; margin: 10px 0 4px; }
+.score .sc-val { font-size: 40px; font-weight: 600; color: #e6e6e6; line-height: 1; }
+.score .sc-state { font-size: 13px; padding: 1px 8px; border-radius: 3px; }
+.score .sc-state.Graded { color: #7fd; background: rgba(127, 221, 170, 0.12); }
+.score .sc-state.Flagged { color: #fb7; background: rgba(255, 187, 119, 0.12); }
+.score .sc-state.Ungraded { color: #999; background: #2a2d33; }
+.manual { color: #7fd; margin: 2px 0; }
+.divider { height: 1px; background: #2a2d33; margin: 10px 0; }
+.preset-list { list-style: none; padding: 0; margin: 0 0 6px; }
+.preset-list li { margin: 3px 0; }
 .preset-list b { display: inline-block; width: 1.4em; color: #7fd; }
 .preset-list .pt { color: #9aa0a6; }
-.total { margin-top: 12px; font-size: 18px; }
-.manual { color: #7fd; }
-.legend { margin-top: 16px; border-top: 1px solid #2a2d33; padding-top: 10px; font-size: 12px; line-height: 1.9; color: #b8bdc4; }
-.legend .lh { color: #9aa0a6; margin-bottom: 4px; }
-.legend .dim { color: #888; margin-top: 4px; }
-.legend kbd { background: #22262c; border: 1px solid #3a3f47; border-radius: 3px; padding: 0 5px; font-family: inherit; font-size: 11px; color: #e6e6e6; }
+/* 快捷键浮层 */
+.help-pop { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.35); display: flex; align-items: center; justify-content: center; z-index: 20; }
+.help-card { background: #1c1f24; border: 1px solid #444; border-radius: 6px; padding: 14px 18px; font-size: 13px; line-height: 2; color: #cdd2d8; min-width: 320px; }
+.help-card .hc-head { display: flex; align-items: center; justify-content: space-between; color: #9aa0a6; font-size: 12px; margin-bottom: 8px; }
+.help-card .hc-head button { background: none; border: none; color: #888; font-size: 20px; line-height: 1; cursor: pointer; }
+.help-card .dim { color: #888; margin-top: 4px; }
+.help-card kbd { background: #22262c; border: 1px solid #3a3f47; border-radius: 3px; padding: 0 5px; font-family: inherit; font-size: 11px; color: #e6e6e6; }
 .comment { margin-top: 16px; display: flex; flex-direction: column; gap: 4px; }
 .comment label { font-size: 12px; color: #888; }
 .comment textarea {
