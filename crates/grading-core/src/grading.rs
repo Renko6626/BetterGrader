@@ -23,17 +23,17 @@ pub fn build_queue(db: &Db, exam_id: i64, problem_number: i64) -> Result<Vec<Gra
             .collect::<Result<_, _>>()?;
         // 已有分数？
         let row = db.conn.query_row(
-            "SELECT total, state, preset_id FROM score WHERE student_id=?1 AND problem_id=?2",
+            "SELECT total, state, preset_id, comment FROM score WHERE student_id=?1 AND problem_id=?2",
             (sid, problem_id),
-            |r| Ok((r.get::<_, Option<i64>>(0)?, r.get::<_, String>(1)?, r.get::<_, Option<i64>>(2)?)),
+            |r| Ok((r.get::<_, Option<i64>>(0)?, r.get::<_, String>(1)?, r.get::<_, Option<i64>>(2)?, r.get::<_, Option<String>>(3)?)),
         ).optional()?;
-        let (total, state, preset_id) = match row {
-            Some((t, s, pid)) => (t, ScoreState::from_str(&s), pid),
-            None => (None, ScoreState::Ungraded, None),
+        let (total, state, preset_id, comment) = match row {
+            Some((t, s, pid, c)) => (t, ScoreState::from_str(&s), pid, c),
+            None => (None, ScoreState::Ungraded, None, None),
         };
         units.push(GradingUnit {
             student_id: sid, student_name: sname, problem_id, problem_number,
-            pages, total, state, preset_id,
+            pages, total, state, preset_id, comment,
         });
     }
     Ok(units)
@@ -48,6 +48,15 @@ pub fn set_score(db: &Db, student_id: i64, problem_id: i64,
          DO UPDATE SET total=?3, state=?4, preset_id=?5, submitted_at=datetime('now')",
         (student_id, problem_id, total, state.as_str(), preset_id),
     )?;
+    Ok(())
+}
+
+pub fn set_comment(db: &Db, student_id: i64, problem_id: i64, comment: &str) -> Result<()> {
+    db.conn.execute(
+        "INSERT INTO score(student_id, problem_id, state, comment)
+         VALUES(?1, ?2, 'Ungraded', ?3)
+         ON CONFLICT(student_id, problem_id) DO UPDATE SET comment=?3",
+        (student_id, problem_id, comment))?;
     Ok(())
 }
 
@@ -118,6 +127,35 @@ mod tests {
         }
         let unit = build_queue(&db, exam, 1).unwrap().into_iter().find(|u| u.student_id == sid).unwrap();
         assert_eq!(unit.pages, vec!["a.jpg", "b.jpg", "c.jpg"]); // 按 seq 排序
+    }
+
+    #[test]
+    fn set_comment_upserts_without_clobbering_score() {
+        use crate::{setup::*, ScoreState};
+        let db = Db::open_in_memory().unwrap();
+        let exam = create_exam(&db, "E", "2026-07-03").unwrap();
+        let p1 = add_problem(&db, exam, 1, "一", 10).unwrap();
+        import_roster(&db, exam, &[crate::RosterRow{name:"甲".into(), exam_number:None}]).unwrap();
+        let sid = list_students(&db, exam).unwrap()[0].id;
+        // 先评语（无分）→ 建 Ungraded 行带评语
+        set_comment(&db, sid, p1, "步骤不全").unwrap();
+        // 再给分 → 不冲掉评语
+        set_score(&db, sid, p1, Some(7), None, ScoreState::Graded).unwrap();
+        let (total, comment): (Option<i64>, Option<String>) = db.conn.query_row(
+            "SELECT total, comment FROM score WHERE student_id=?1 AND problem_id=?2",
+            (sid, p1), |r| Ok((r.get(0)?, r.get(1)?))).unwrap();
+        assert_eq!(total, Some(7));
+        assert_eq!(comment.as_deref(), Some("步骤不全"));
+    }
+
+    #[test]
+    fn build_queue_returns_comment_after_set_comment() {
+        let db = Db::open_in_memory().unwrap();
+        let (exam, prob, _) = seed(&db);
+        let sid = build_queue(&db, exam, 1).unwrap()[0].student_id;
+        set_comment(&db, sid, prob, "重做").unwrap();
+        let q = build_queue(&db, exam, 1).unwrap();
+        assert_eq!(q[0].comment.as_deref(), Some("重做"));
     }
 
     #[test]

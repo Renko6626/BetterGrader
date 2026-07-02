@@ -35,6 +35,7 @@ pub struct GradingUnit {
     pub total: Option<i64>,
     pub state: ScoreState,
     pub preset_id: Option<i64>,
+    pub comment: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -44,7 +45,7 @@ pub struct PageRef { pub problem_number: i64, pub image_path: String }
 pub struct ExamInfo { pub id: i64, pub name: String, pub date: String }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct Cell { pub total: Option<i64>, pub state: String }
+pub struct Cell { pub total: Option<i64>, pub state: String, pub comment: Option<String> }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct StudentRow {

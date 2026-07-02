@@ -28,18 +28,18 @@ pub fn build_export(db: &Db, exam_id: i64) -> Result<ExportData> {
 
         for (i, p) in problems.iter().enumerate() {
             if absent {
-                cells.push(Cell { total: None, state: "Absent".into() });
+                cells.push(Cell { total: None, state: "Absent".into(), comment: None });
                 all_graded = false;
                 continue;
             }
             let row = db.conn.query_row(
-                "SELECT total, state FROM score WHERE student_id=?1 AND problem_id=?2",
+                "SELECT total, state, comment FROM score WHERE student_id=?1 AND problem_id=?2",
                 (stu.id, p.id),
-                |r| Ok((r.get::<_, Option<i64>>(0)?, r.get::<_, String>(1)?)),
+                |r| Ok((r.get::<_, Option<i64>>(0)?, r.get::<_, String>(1)?, r.get::<_, Option<String>>(2)?)),
             ).ok();
-            let (total, state) = match row {
-                Some((t, s)) => (t, ScoreState::from_str(&s)),
-                None => (None, ScoreState::Ungraded),
+            let (total, state, comment) = match row {
+                Some((t, s, c)) => (t, ScoreState::from_str(&s), c),
+                None => (None, ScoreState::Ungraded, None),
             };
             match state {
                 ScoreState::Graded => { graded += 1; }
@@ -58,7 +58,7 @@ pub fn build_export(db: &Db, exam_id: i64) -> Result<ExportData> {
             }
             // 不变量：Ungraded 单元 total 恒为 None（即便库中残留脏 total）。
             let cell_total = if matches!(state, ScoreState::Ungraded) { None } else { total };
-            cells.push(Cell { total: cell_total, state: state.as_str().into() });
+            cells.push(Cell { total: cell_total, state: state.as_str().into(), comment });
         }
 
         rows.push(StudentRow {
@@ -112,13 +112,16 @@ fn csv_field(s: &str) -> String {
     } else { s.to_string() }
 }
 
-pub fn export_to_csv(data: &ExportData) -> String {
+pub fn export_to_csv(data: &ExportData, include_comments: bool) -> String {
     let mut out = String::new();
     // 表头
     let mut header = vec!["姓名".to_string(), "考号".to_string()];
     for n in &data.problem_numbers { header.push(format!("题{n}")); }
     header.push("总分".to_string());
     if data.ranking_available { header.push("排名".to_string()); }
+    if include_comments {
+        for n in &data.problem_numbers { header.push(format!("题{n}评语")); }
+    }
     out.push_str(&header.join(","));
     out.push('\n');
 
@@ -136,6 +139,12 @@ pub fn export_to_csv(data: &ExportData) -> String {
         f.push(if r.absent { ABSENT_MARK.to_string() } else { r.total.map(|t| t.to_string()).unwrap_or_default() });
         if data.ranking_available {
             f.push(r.rank.map(|x| x.to_string()).unwrap_or_default());
+        }
+        if include_comments {
+            for c in &r.cells {
+                let text = if r.absent { String::new() } else { c.comment.clone().unwrap_or_default() };
+                f.push(csv_field(&text));
+            }
         }
         out.push_str(&f.join(","));
         out.push('\n');
@@ -310,7 +319,7 @@ mod tests {
     fn csv_marks_states_and_omits_rank_when_incomplete() {
         let db = Db::open_in_memory().unwrap();
         let exam = scenario(&db);
-        let csv = export_to_csv(&build_export(&db, exam).unwrap());
+        let csv = export_to_csv(&build_export(&db, exam).unwrap(), false);
         let lines: Vec<&str> = csv.lines().collect();
         assert_eq!(lines[0], "姓名,考号,题1,题2,总分"); // 有洞→无排名列
         // 甲：8,6,14
@@ -319,6 +328,27 @@ mod tests {
         assert!(lines.iter().any(|l| *l == "乙,A2,5?,,5"));
         // 丙：缺考整行
         assert!(lines.iter().any(|l| *l == "丙,A3,缺考,缺考,缺考"));
+    }
+
+    #[test]
+    fn csv_appends_comment_columns_when_enabled() {
+        let db = Db::open_in_memory().unwrap();
+        let exam = scenario(&db); // 复用现有 scenario：甲 全判/乙 存疑+未判/丙 缺考
+        // 给甲题1加评语
+        let s = crate::setup::list_students(&db, exam).unwrap();
+        let p1 = crate::setup::list_problems(&db, exam).unwrap()[0].id;
+        crate::grading::set_comment(&db, s[0].id, p1, "漂亮").unwrap();
+        let data = build_export(&db, exam).unwrap();
+        let no = export_to_csv(&data, false);
+        let yes = export_to_csv(&data, true);
+        // 不含评语时表头无评语列
+        assert!(!no.lines().next().unwrap().contains("评语"));
+        // 含评语时：分列在前、评语列在后
+        let head = yes.lines().next().unwrap();
+        assert!(head.ends_with("题1评语,题2评语") || head.contains("总分") && head.contains("题1评语"));
+        assert!(head.find("总分").unwrap() < head.find("题1评语").unwrap()); // 分在前评语在后
+        // 甲的题1评语出现在其行
+        assert!(yes.lines().any(|l| l.starts_with("甲,") && l.contains("漂亮")));
     }
 
     #[test]
@@ -331,7 +361,7 @@ mod tests {
         let s = list_students(&db, exam).unwrap();
         db.conn.execute("INSERT INTO page(exam_id,student_id,problem_number,image_path,seq,status) VALUES(?1,?2,1,'x.jpg',0,'labeled')", (exam, s[0].id)).unwrap();
         set_score(&db, s[0].id, p1, Some(7), None, ScoreState::Graded).unwrap();
-        let csv = export_to_csv(&build_export(&db, exam).unwrap());
+        let csv = export_to_csv(&build_export(&db, exam).unwrap(), false);
         assert_eq!(csv.lines().next().unwrap(), "姓名,考号,题1,总分,排名");
         assert!(csv.lines().any(|l| l == "甲,,7,7,1")); // 考号 None → 空
     }
@@ -354,7 +384,7 @@ mod tests {
         db.conn.execute("INSERT INTO page(exam_id,student_id,problem_number,image_path,seq,status) VALUES(?1,?2,1,'x.jpg',0,'labeled')", (exam, s[0].id)).unwrap();
         // 存疑但还没给数字：total=None, state=Flagged
         set_score(&db, s[0].id, p1, None, None, ScoreState::Flagged).unwrap();
-        let csv = export_to_csv(&build_export(&db, exam).unwrap());
+        let csv = export_to_csv(&build_export(&db, exam).unwrap(), false);
         // 甲 该题单元 = "?"（关键断言：不是空、不是 "None?"）；
         // 总分列为 "0"：build_export 对非缺考学生 stu_total 从 Some(0) 起，
         // 而 null-total 的 Flagged 单元不累加，故总分保持 0。

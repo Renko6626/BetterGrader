@@ -97,7 +97,7 @@ pub fn export_summary(state: tauri::State<AppState>) -> R<ExportData> {
 
 #[tauri::command]
 pub fn save_csv(state: tauri::State<AppState>, path: String) -> R<()> {
-    let csv = with_exam(&state, |oe| Ok(export::export_to_csv(&export::build_export(&oe.db, oe.exam_id)?)))?;
+    let csv = with_exam(&state, |oe| Ok(export::export_to_csv(&export::build_export(&oe.db, oe.exam_id)?, false)))?;
     // 加 UTF-8 BOM，Excel 直接识别中文
     let mut bytes = vec![0xEF, 0xBB, 0xBF];
     bytes.extend_from_slice(csv.as_bytes());
