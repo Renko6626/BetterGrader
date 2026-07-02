@@ -42,6 +42,34 @@ describe("爽批态", () => {
     expect(r.state.manual).toBe(false);
     expect(r.state.buffer).toBe("");
   });
+  it("advance 换单元时 peek 复位为 0", () => {
+    const r = reduceGradeKey({ ...s0, peek: 2 }, "Enter", ctx);
+    expect(r.effect).toEqual({ kind: "advance" });
+    expect(r.state.index).toBe(1);
+    expect(r.state.peek).toBe(0);      // moveTo 复位
+  });
+  it("back 换单元时 peek/manual/buffer 复位", () => {
+    const r = reduceGradeKey({ ...s0, index: 2, peek: -1 }, "Backspace", ctx);
+    expect(r.effect).toEqual({ kind: "back" });
+    expect(r.state.index).toBe(1);
+    expect(r.state.peek).toBe(0);
+  });
+  it("空格 = 提交并前进（同 Enter 轴1）", () => {
+    const r = reduceGradeKey(s0, " ", ctx);
+    expect(r.effect).toEqual({ kind: "advance" });
+    expect(r.state.index).toBe(1);
+  });
+  it("← 速览递减并夹在 peekMin", () => {
+    expect(reduceGradeKey(s0, "ArrowLeft", ctx).state.peek).toBe(-1);
+    const atMin = reduceGradeKey({ ...s0, peek: ctx.peekMin }, "ArrowLeft", ctx);
+    expect(atMin.state.peek).toBe(ctx.peekMin);       // 夹住
+    expect(atMin.effect).toEqual({ kind: "none" });   // 只读
+  });
+  it("Enter 在队列末尾不越界", () => {
+    const last = ctx.queueLength - 1;
+    const r = reduceGradeKey({ ...s0, index: last }, "Enter", ctx);
+    expect(r.state.index).toBe(last);   // 夹在末尾
+  });
 });
 
 describe("手动模式（M/0 进入）与上下文 Enter（修复的 bug）", () => {
