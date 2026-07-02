@@ -21,6 +21,7 @@
 - **数据不出本地**：一场考试 = 一个自包含目录 `/某场考试/{images/, exam.db}`；图导入时拷进 `images/`。
 - **AI 永远不能写 `score.total`**（M0/M1 无 AI，仅声明为不可违反的架构约束）。
 - **视觉**：monolith 设计系统——冷、减法、高信息密度、几何。判分界面靠键盘，不靠花哨组件。
+- **UI 组件库 = naive-ui**（用户偏好）：Setup 等表单/表格/按钮/弹窗用 naive-ui 组件（`NButton`/`NDataTable`/`NList`/`NModal` 等，按需从 `naive-ui` 引入，无需全局注册），配暗色主题（`NConfigProvider :theme="darkTheme"`）贴合 monolith 冷淡风。判分视图的**键盘逻辑与单屏 scoped 布局保持原生 + scoped CSS**（自定义、高密度、不被组件库拖累），仅队列总览等弹窗可用 `NModal`。下文各视图任务给出的模板是**功能基线**，实现时用等价 naive-ui 组件替换原生元素、键盘逻辑不变。
 - **§7.0 承重不变量**（本计划不实现 Label，但 schema 与 core 需为其留位）：叠内答题页与题号严格一一对应，缺答塞空白页占位，软件页数≠N 报警强制指认、绝不盲目自增。
 
 ---
@@ -221,6 +222,7 @@ fn main() {
   },
   "dependencies": {
     "@tauri-apps/api": "^2",
+    "naive-ui": "^2",
     "pinia": "^2",
     "vue": "^3.4"
   },
