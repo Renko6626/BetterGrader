@@ -104,6 +104,43 @@ pub fn build_export(db: &Db, exam_id: i64) -> Result<ExportData> {
     })
 }
 
+fn csv_field(s: &str) -> String {
+    if s.contains(',') || s.contains('"') || s.contains('\n') {
+        format!("\"{}\"", s.replace('"', "\"\""))
+    } else { s.to_string() }
+}
+
+pub fn export_to_csv(data: &ExportData) -> String {
+    let mut out = String::new();
+    // 表头
+    let mut header = vec!["姓名".to_string(), "考号".to_string()];
+    for n in &data.problem_numbers { header.push(format!("题{n}")); }
+    header.push("总分".to_string());
+    if data.ranking_available { header.push("排名".to_string()); }
+    out.push_str(&header.join(","));
+    out.push('\n');
+
+    for r in &data.rows {
+        let mut f = vec![csv_field(&r.name), csv_field(r.exam_number.as_deref().unwrap_or(""))];
+        for c in &r.cells {
+            let cell = if r.absent { "缺考".to_string() }
+                else { match c.state.as_str() {
+                    "Graded" => c.total.map(|t| t.to_string()).unwrap_or_default(),
+                    "Flagged" => c.total.map(|t| format!("{t}?")).unwrap_or_else(|| "?".into()),
+                    _ => String::new(), // Ungraded 留空
+                }};
+            f.push(csv_field(&cell));
+        }
+        f.push(if r.absent { "缺考".to_string() } else { r.total.map(|t| t.to_string()).unwrap_or_default() });
+        if data.ranking_available {
+            f.push(r.rank.map(|x| x.to_string()).unwrap_or_default());
+        }
+        out.push_str(&f.join(","));
+        out.push('\n');
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -265,5 +302,35 @@ mod tests {
         assert_eq!(ps2.scored_count, 0);
         assert_eq!(ps2.avg, None);
         assert_eq!(ps2.rate, None);
+    }
+
+    #[test]
+    fn csv_marks_states_and_omits_rank_when_incomplete() {
+        let db = Db::open_in_memory().unwrap();
+        let exam = scenario(&db);
+        let csv = export_to_csv(&build_export(&db, exam).unwrap());
+        let lines: Vec<&str> = csv.lines().collect();
+        assert_eq!(lines[0], "姓名,考号,题1,题2,总分"); // 有洞→无排名列
+        // 甲：8,6,14
+        assert!(lines.iter().any(|l| l.starts_with("甲,A1,8,6,14")));
+        // 乙：存疑5标记、未判空 → "乙,A2,5?,,5"
+        assert!(lines.iter().any(|l| *l == "乙,A2,5?,,5"));
+        // 丙：缺考整行
+        assert!(lines.iter().any(|l| *l == "丙,A3,缺考,缺考,缺考"));
+    }
+
+    #[test]
+    fn csv_includes_rank_when_complete() {
+        let db = Db::open_in_memory().unwrap();
+        // 复用 ranking_appears_only_when_all_graded 的场景构造
+        let exam = create_exam(&db, "E", "2026-07-02").unwrap();
+        let p1 = add_problem(&db, exam, 1, "一", 10).unwrap();
+        import_roster(&db, exam, &[RosterRow{name:"甲".into(),exam_number:None}]).unwrap();
+        let s = list_students(&db, exam).unwrap();
+        db.conn.execute("INSERT INTO page(exam_id,student_id,problem_number,image_path,seq,status) VALUES(?1,?2,1,'x.jpg',0,'labeled')", (exam, s[0].id)).unwrap();
+        set_score(&db, s[0].id, p1, Some(7), None, ScoreState::Graded).unwrap();
+        let csv = export_to_csv(&build_export(&db, exam).unwrap());
+        assert_eq!(csv.lines().next().unwrap(), "姓名,考号,题1,总分,排名");
+        assert!(csv.lines().any(|l| l == "甲,,7,7,1")); // 考号 None → 空
     }
 }
