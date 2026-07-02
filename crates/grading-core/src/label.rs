@@ -94,12 +94,15 @@ mod tests {
             RosterRow{name:"甲".into(), exam_number:None},
             RosterRow{name:"乙".into(), exam_number:None},
             RosterRow{name:"丙".into(), exam_number:None},  // 丙 缺考
+            RosterRow{name:"丁".into(), exam_number:None},  // 丁 只有姓名页
         ]).unwrap();
         let s: Vec<i64> = crate::setup::list_students(&db, exam).unwrap().iter().map(|x| x.id).collect();
         // 甲：姓名页(0) + 题1 + 题2 = 答题页 2 == N ✓
-        for (seq,(pn)) in [(0,0),(1,1),(2,2)] { let id=add_ingested_page(&db,exam,&format!("j{seq}.jpg"),seq).unwrap(); set_page_label(&db,id,Some(s[0]),Some(pn)).unwrap(); }
+        for (seq, pn) in [(0,0),(1,1),(2,2)] { let id=add_ingested_page(&db,exam,&format!("j{seq}.jpg"),seq).unwrap(); set_page_label(&db,id,Some(s[0]),Some(pn)).unwrap(); }
         // 乙：姓名页 + 只有题1 = 答题页 1 != 2 ✗（§7.0 报警）
-        for (seq,(pn)) in [(3,0),(4,1)] { let id=add_ingested_page(&db,exam,&format!("y{seq}.jpg"),seq).unwrap(); set_page_label(&db,id,Some(s[1]),Some(pn)).unwrap(); }
+        for (seq, pn) in [(3,0),(4,1)] { let id=add_ingested_page(&db,exam,&format!("y{seq}.jpg"),seq).unwrap(); set_page_label(&db,id,Some(s[1]),Some(pn)).unwrap(); }
+        // 丁：仅姓名页(0)，无答题页 → 答题页 0 != 2 ✗，但有 page → 进 stacks，不缺考
+        { let id=add_ingested_page(&db,exam,"d0.jpg",8).unwrap(); set_page_label(&db,id,Some(s[3]),Some(0)).unwrap(); }
         // 一张未标注
         add_ingested_page(&db, exam, "x.jpg", 9).unwrap();
 
@@ -108,8 +111,13 @@ mod tests {
         assert_eq!((jia.answer_pages, jia.problem_count, jia.count_ok), (2, 2, true));
         let yi = sum.stacks.iter().find(|r| r.student_id==s[1]).unwrap();
         assert_eq!((yi.answer_pages, yi.count_ok), (1, false));   // 页数≠N
+        assert_eq!(yi.problem_count, 2);                          // N=2
+        // 丁：只有姓名页 → 进 stacks，answer_pages=0，页数不符，且不算缺考
+        let ding = sum.stacks.iter().find(|r| r.student_id==s[3]).unwrap();
+        assert_eq!((ding.answer_pages, ding.count_ok), (0, false));
+        assert!(sum.absent_students.iter().all(|st| st.name != "丁"));
         assert!(sum.stacks.iter().all(|r| r.student_id != s[2])); // 丙无 page → 不在 stacks
-        assert_eq!(sum.absent_students.len(), 1);                 // 丙 缺考
+        assert_eq!(sum.absent_students.len(), 1);                 // 仅丙 缺考
         assert_eq!(sum.absent_students[0].name, "丙");
         assert_eq!(sum.unlabeled_pages, 1);
     }
