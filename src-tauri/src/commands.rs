@@ -1,7 +1,7 @@
 use std::sync::Mutex;
 use std::path::PathBuf;
-use grading_core::{Db, ExamInfo, Problem, Preset, Student, GradingUnit, PageRef, ScoreState,
-                   persist, setup, grading, fake};
+use grading_core::{Db, ExamInfo, Problem, Preset, Student, GradingUnit, PageRef, ScoreState, ExportData,
+                   persist, setup, grading, fake, export};
 
 pub struct OpenExam {
     pub db: Db,
@@ -88,4 +88,18 @@ fn with_exam<T>(state: &tauri::State<AppState>, f: impl FnOnce(&OpenExam) -> any
 pub fn set_score(state: tauri::State<AppState>, student_id: i64, problem_id: i64,
                  total: Option<i64>, preset_id: Option<i64>, state_str: String) -> R<()> {
     with_exam(&state, |oe| grading::set_score(&oe.db, student_id, problem_id, total, preset_id, ScoreState::from_str(&state_str)))
+}
+
+#[tauri::command]
+pub fn export_summary(state: tauri::State<AppState>) -> R<ExportData> {
+    with_exam(&state, |oe| export::build_export(&oe.db, oe.exam_id))
+}
+
+#[tauri::command]
+pub fn save_csv(state: tauri::State<AppState>, path: String) -> R<()> {
+    let csv = with_exam(&state, |oe| Ok(export::export_to_csv(&export::build_export(&oe.db, oe.exam_id)?)))?;
+    // 加 UTF-8 BOM，Excel 直接识别中文
+    let mut bytes = vec![0xEF, 0xBB, 0xBF];
+    bytes.extend_from_slice(csv.as_bytes());
+    std::fs::write(&path, bytes).map_err(e)
 }

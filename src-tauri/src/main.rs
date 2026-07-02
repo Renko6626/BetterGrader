@@ -11,7 +11,7 @@ fn main() {
             commands::new_exam, commands::open_exam, commands::seed_demo_exam, commands::current_exam,
             commands::list_problems, commands::list_presets, commands::list_students,
             commands::build_queue, commands::set_score, commands::student_pages
-            // 注：导出命令在 Task 5 追加进本列表
+            , commands::export_summary, commands::save_csv
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
