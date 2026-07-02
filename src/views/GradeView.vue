@@ -37,9 +37,13 @@ const isRealImage = (path: string | null) =>
   !!path && !path.startsWith("fake://"); // 真实文件用 convertFileSrc；此处仅判断是否占位
 
 async function loadQueue() {
-  queue.value = await buildQueue(examId, problemNumber.value);
-  presets.value = current.value ? await listPresets(current.value.problem_id) : [];
-  await refreshPeek();
+  try {
+    queue.value = await buildQueue(examId, problemNumber.value);
+    presets.value = current.value ? await listPresets(current.value.problem_id) : [];
+    await refreshPeek();
+  } catch (e) {
+    errorMsg.value = String(e); // 未 seed 时 buildQueue 会拒绝，优雅降级为横幅+"队列为空"
+  }
 }
 async function refreshPeek() {
   peekPages.value = current.value ? await studentPages(current.value.student_id) : [];
@@ -87,9 +91,13 @@ async function applyEffect(eff: GradeEffect) {
 }
 
 function onKey(e: KeyboardEvent) {
+  if (e.ctrlKey || e.metaKey || e.altKey) return; // 让 OS 快捷键（Ctrl+R/F、devtools 等）通过，绝不误触发落分
+  const before = gs.value;
   const r = reduceGradeKey(gs.value, e.key, ctx.value);
+  const handled = r.effect.kind !== "none"
+    || JSON.stringify(r.state) !== JSON.stringify(before);
   gs.value = r.state;
-  e.preventDefault();
+  if (handled) e.preventDefault(); // 只吞掉 reducer 真正消费的键
   applyEffect(r.effect);
 }
 
