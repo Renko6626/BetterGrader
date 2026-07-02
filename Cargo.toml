@@ -11,3 +11,14 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rusqlite = { version = "0.31", features = ["bundled"] }
 anyhow = "1"
+
+# --- 构建提速：调轻调试信息 ---
+# 本 crate 只留行号级 debuginfo（够看 backtrace 的文件:行），
+# 依赖树（Tauri/windows-rs/SQLite 等大头）完全不生成 debuginfo——
+# 这块 codegen + 链接开销可观，且平时不会单步进依赖。
+# 冷编译与增量都受益；副作用仅是无法单步调试依赖内部。
+[profile.dev]
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
