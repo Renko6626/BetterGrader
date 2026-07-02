@@ -19,7 +19,8 @@ export const studentPages = (studentId: number) => invoke<PageRef[]>("student_pa
 
 // 导出
 export const exportSummary = () => invoke<ExportData>("export_summary");
-export const saveCsv = (path: string) => invoke<void>("save_csv", { path });
+export const saveCsv = (path: string, includeComments: boolean) =>
+  invoke<void>("save_csv", { path, includeComments });
 
 // 扫描/理片
 export const ingestFolder = (srcDir: string) => invoke<number>("ingest_folder", { srcDir });
@@ -30,3 +31,13 @@ export const setPageLabel = (pageId: number, studentId: number | null, problemNu
 export const addStudent = (name: string, examNumber: string | null) =>
   invoke<number>("add_student", { name, examNumber });
 export const labelingSummary = () => invoke<LabelSummary>("labeling_summary");
+
+// PDF 导入 / 评语 / 学生编辑
+export const listPdfs = (dir: string) => invoke<string[]>("list_pdfs", { dir });
+export const readPdf = (dir: string, filename: string) => invoke<number[]>("read_pdf", { dir, filename });
+export const savePdfPage = (studentId: number, pageIndex: number, filename: string, bytes: number[]) =>
+  invoke<void>("save_pdf_page", { studentId, pageIndex, filename, bytes });
+export const setComment = (studentId: number, problemId: number, comment: string) =>
+  invoke<void>("set_comment", { studentId, problemId, comment });
+export const renameStudent = (studentId: number, name: string) => invoke<void>("rename_student", { studentId, name });
+export const deleteStudent = (studentId: number) => invoke<void>("delete_student", { studentId });

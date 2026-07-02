@@ -6,7 +6,7 @@
     "strict": true,
     "jsx": "preserve",
     "lib": ["ES2020", "DOM"],
-    "types": ["vitest/globals"],
+    "types": ["vitest/globals", "vite/client"],
     "skipLibCheck": true
   },
   "include": ["src/**/*.ts", "src/**/*.vue"]
