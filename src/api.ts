@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { Problem, Preset, Student, GradingUnit, PageRef, ScoreState, ExamInfo, ExportData } from "./types";
+import type { Problem, Preset, Student, GradingUnit, PageRef, ScoreState, ExamInfo, ExportData, PageRow, LabelSummary } from "./types";
 
 // 考试生命周期
 export const newExam = (dir: string) => invoke<number>("new_exam", { dir });
@@ -20,3 +20,13 @@ export const studentPages = (studentId: number) => invoke<PageRef[]>("student_pa
 // 导出
 export const exportSummary = () => invoke<ExportData>("export_summary");
 export const saveCsv = (path: string) => invoke<void>("save_csv", { path });
+
+// 扫描/理片
+export const ingestFolder = (srcDir: string) => invoke<number>("ingest_folder", { srcDir });
+export const readImage = (filename: string) => invoke<number[]>("read_image", { filename });
+export const listPages = () => invoke<PageRow[]>("list_pages");
+export const setPageLabel = (pageId: number, studentId: number | null, problemNumber: number | null) =>
+  invoke<void>("set_page_label", { pageId, studentId, problemNumber });
+export const addStudent = (name: string, examNumber: string | null) =>
+  invoke<number>("add_student", { name, examNumber });
+export const labelingSummary = () => invoke<LabelSummary>("labeling_summary");

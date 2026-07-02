@@ -20,3 +20,7 @@ export interface ExportData {
   exam: ExamInfo; problem_numbers: number[]; problem_max: number[];
   rows: StudentRow[]; problem_stats: ProblemStat[]; coverage: Coverage; ranking_available: boolean;
 }
+
+export interface PageRow { id: number; seq: number; image_path: string; student_id: number | null; problem_number: number | null; status: string }
+export interface StackRow { student_id: number; student_name: string; answer_pages: number; problem_count: number; count_ok: boolean }
+export interface LabelSummary { stacks: StackRow[]; absent_students: Student[]; unlabeled_pages: number }
