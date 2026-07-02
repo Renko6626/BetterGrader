@@ -23,3 +23,10 @@ const route = ref<"setup" | "grade" | "export">("setup");
 <style>
 .app-shell { display: block; min-height: 100vh; background: #101010; }
 </style>
+
+<style scoped>
+@media print {
+  .app-shell { background: #fff !important; }
+  nav { display: none !important; }
+}
+</style>

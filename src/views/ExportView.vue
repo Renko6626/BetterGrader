@@ -4,7 +4,7 @@ import { ref } from "vue";
 import { save } from "@tauri-apps/plugin-dialog";
 import { exportSummary, saveCsv } from "../api";
 import type { ExportData } from "../types";
-import { NButton, NAlert, NSpace, NDataTable } from "naive-ui";
+import { NButton, NAlert, NSpace } from "naive-ui";
 
 const data = ref<ExportData | null>(null);
 const errorMsg = ref("");
@@ -50,7 +50,7 @@ function isNoExamError(msg: string): boolean {
       <n-button v-if="data" @click="doSaveCsv">保存 CSV…</n-button>
       <n-button v-if="data" @click="printReport">打印 / 导出 PDF</n-button>
     </n-space>
-    <n-alert v-if="errorMsg" type="error" :title="errorMsg" closable @close="errorMsg=''" style="margin-top:8px"/>
+    <n-alert v-if="errorMsg && !isNoExamError(errorMsg)" type="error" :title="errorMsg" closable @close="errorMsg=''" style="margin-top:8px"/>
     <n-alert v-if="okMsg" type="success" :title="okMsg" closable @close="okMsg=''" style="margin-top:8px"/>
 
     <!-- 无考试打开时的清晰提示，替代空白/困惑的界面 -->
@@ -116,5 +116,6 @@ function isNoExamError(msg: string): boolean {
 @media print {
   .export > .n-space, .export > .n-alert, .coverage { display: none !important; }
   .report th, .report td { border-color: #000; color: #000; }
+  .report, .report h2, .report h3 { color: #000 !important; }
 }
 </style>
