@@ -11,6 +11,11 @@ export const currentExam = () => invoke<ExamInfo | null>("current_exam");
 export const listProblems = () => invoke<Problem[]>("list_problems");
 export const listPresets = (problemId: number) => invoke<Preset[]>("list_presets", { problemId });
 export const listStudents = () => invoke<Student[]>("list_students");
+export const addProblem = (number: number, title: string, maxScore: number) =>
+  invoke<number>("add_problem", { number, title, maxScore });
+export const addPreset = (problemId: number, slot: number, label: string, points: number) =>
+  invoke<number>("add_preset", { problemId, slot, label, points });
+export const deleteProblem = (problemId: number) => invoke<void>("delete_problem", { problemId });
 export const buildQueue = (problemNumber: number) => invoke<GradingUnit[]>("build_queue", { problemNumber });
 export const setScore = (studentId: number, problemId: number, total: number | null,
                          presetId: number | null, stateStr: ScoreState) =>

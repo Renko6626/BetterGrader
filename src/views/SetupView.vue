@@ -4,9 +4,10 @@ import { open } from "@tauri-apps/plugin-dialog";
 import {
   newExam, openExam, seedDemoExam, currentExam, listProblems, listPresets, listStudents, ingestFolder,
   listPdfs, readPdf, savePdfPage, addStudent, renameStudent, deleteStudent,
+  addProblem, deleteProblem,
 } from "../api";
 import type { Problem, Preset, Student, ExamInfo } from "../types";
-import { NButton, NCard, NDataTable, NAlert, NSpace, NTag } from "naive-ui";
+import { NButton, NCard, NDataTable, NAlert, NSpace, NTag, NInputNumber } from "naive-ui";
 import type { DataTableColumns } from "naive-ui";
 import { usePdf } from "../composables/usePdf";
 
@@ -20,6 +21,9 @@ const errorMsg = ref("");
 const ingestMsg = ref("");
 const pdfMsg = ref("");
 const importing = ref(false);
+const nProblems = ref(1);
+const perMax = ref(10);
+const setupMsg = ref("");
 
 async function refresh() {
   exam.value = await currentExam();
@@ -81,6 +85,29 @@ async function doImportPdfs() {
     await refresh();
   } catch (e) { errorMsg.value = String(e); } finally { importing.value = false; }
 }
+async function genProblems() {
+  errorMsg.value = ""; setupMsg.value = "";
+  const n = Math.floor(nProblems.value ?? 0), m = Math.floor(perMax.value ?? 0);
+  if (n < 1 || m < 0) { errorMsg.value = "题数需 ≥1、每题满分需 ≥0"; return; }
+  try {
+    const existing = new Set(problems.value.map(p => p.number));
+    let created = 0;
+    for (let k = 1; k <= n; k++) {
+      if (existing.has(k)) continue;
+      await addProblem(k, `题${k}`, m);
+      created++;
+    }
+    setupMsg.value = created ? `已生成 ${created} 道题（每题满分 ${m}，自动带满分/零分/空白档位）` : "这些题号已存在，未新增";
+    await refresh();
+  } catch (e) { errorMsg.value = String(e); }
+}
+async function doDeleteProblem(id: number) {
+  if (window.confirm("删除该题及其档位/已打分数？")) {
+    errorMsg.value = "";
+    try { await deleteProblem(id); await refresh(); }
+    catch (e) { errorMsg.value = String(e); }
+  }
+}
 async function doRename(sid: number, cur: string) {
   const name = window.prompt("改名", cur);
   if (name && name.trim()) {
@@ -126,9 +153,23 @@ onMounted(refresh);
     <p v-if="exam">当前：{{ exam.name }}</p>
     <p v-else>未打开考试。点上面按钮选一个目录。</p>
 
+    <div v-if="exam" style="margin:12px 0; padding:10px; border:1px solid #333;">
+      <h3 style="margin-top:0;">题目设置</h3>
+      <n-space align="center">
+        题数 <n-input-number v-model:value="nProblems" :min="1" size="small" style="width:96px" />
+        每题满分 <n-input-number v-model:value="perMax" :min="0" size="small" style="width:110px" />
+        <n-button size="small" type="primary" @click="genProblems">生成题目</n-button>
+      </n-space>
+      <n-alert v-if="setupMsg" type="success" :title="setupMsg" closable @close="setupMsg=''" style="margin-top:6px" />
+      <p style="color:#888; font-size:12px; margin-bottom:0;">
+        判分前必须先设好题目——PDF/图片导入<b>不会</b>自动建题。已有题目时只补缺的号；改满分请删掉该题再重设。
+      </p>
+    </div>
+
     <div v-for="p in problems" :key="p.id" style="margin:8px 0;">
       <h3>题{{ p.number }} · {{ p.title }}
         <n-tag size="small">满分 {{ p.max_score }}</n-tag>
+        <n-button size="tiny" type="error" @click="doDeleteProblem(p.id)" style="margin-left:8px;">删除</n-button>
       </h3>
       <ul><li v-for="pr in presetsByProblem[p.id]" :key="pr.id">键 {{ pr.slot }} → {{ pr.label }} = {{ pr.points }}</li></ul>
     </div>

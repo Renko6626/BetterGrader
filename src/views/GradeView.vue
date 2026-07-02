@@ -226,7 +226,8 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
               @click="onSelectProblem(p.number)">题{{ p.number }}</button>
     </header>
     <n-alert v-if="errorMsg" type="error" :title="errorMsg" closable @close="errorMsg = ''" />
-    <p>队列为空。先到"考试设置"打开或新建一场考试，或导入图片文件夹并标注。</p>
+    <p v-if="!problems.length">本场还没设置题目——先到"考试设置"用"生成题目"（填题数 + 每题满分）建题，才能判分。</p>
+    <p v-else>本题队列为空：还没有卷子。先在"考试设置"导入 PDF/图片，并（PDF 会自动标注）在"标注"确认。</p>
   </section>
 </template>
 
