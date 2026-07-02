@@ -1,21 +1,24 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from "vue";
+import { ref, computed, onMounted, onUnmounted, watch } from "vue";
 import { NModal, NAlert } from "naive-ui";
-import { buildQueue, listPresets, setScore, studentPages } from "../api";
-import type { GradingUnit, Preset, PageRef } from "../types";
+import { buildQueue, listPresets, setScore, studentPages, listProblems } from "../api";
+import type { GradingUnit, Preset, PageRef, Problem } from "../types";
+import { useImage } from "../composables/useImage";
 import {
   initialGradeState, reduceGradeKey,
   type GradeState, type GradeCtx, type GradeEffect,
 } from "../composables/useGradeKeys";
 
-// M1：先批第 1 题（真实选题在后续计划）；作用于当前打开的考试
-const problemNumber = ref(1);
+// 题目选择：列出各题，用户选中后载该题队列（不再固定 problemNumber=1）
+const problems = ref<Problem[]>([]);
+const problemNumber = ref<number | null>(null);
 
 const queue = ref<GradingUnit[]>([]);
 const presets = ref<Preset[]>([]);
 const gs = ref<GradeState>(initialGradeState());
 const peekPages = ref<PageRef[]>([]);   // 当前学生全部页，供轴2 速览
 const errorMsg = ref("");               // IPC 失败提示（落分失败必须可见）
+const { url: imgUrl, show: showImg } = useImage();
 
 const current = computed(() => queue.value[gs.value.index]);
 const ctx = computed<GradeCtx>(() => ({
@@ -35,17 +38,42 @@ const shownImage = computed(() => {
 const isRealImage = (path: string | null) =>
   !!path && !path.startsWith("fake://"); // 真实文件用 convertFileSrc；此处仅判断是否占位
 
+async function initProblems() {
+  try {
+    problems.value = await listProblems();
+    if (problems.value.length && problemNumber.value == null) problemNumber.value = problems.value[0].number;
+  } catch (e) {
+    errorMsg.value = String(e);
+  }
+}
 async function loadQueue() {
   try {
+    if (problemNumber.value == null) { queue.value = []; return; }
     queue.value = await buildQueue(problemNumber.value);
     presets.value = current.value ? await listPresets(current.value.problem_id) : [];
     await refreshPeek();
+    await refreshImg();
   } catch (e) {
     errorMsg.value = String(e); // 未 seed 时 buildQueue 会拒绝，优雅降级为横幅+"队列为空"
   }
 }
 async function refreshPeek() {
   peekPages.value = current.value ? await studentPages(current.value.student_id) : [];
+}
+async function refreshImg() {
+  // 真图：当前速览页或当前单元首图；fake:// 或缺失走占位
+  try {
+    const path = shownImage.value;
+    await showImg(isRealImage(path) ? path : null);
+  } catch (e) {
+    errorMsg.value = String(e);
+  }
+}
+function onSelectProblem(n: number) {
+  if (n === problemNumber.value) return;
+  problemNumber.value = n;
+  gs.value = initialGradeState();
+  loadQueue();
 }
 
 async function applyEffect(eff: GradeEffect) {
@@ -104,16 +132,28 @@ function jumpFromOverview(i: number) {
   applyEffect({ kind: "jump", index: i });
 }
 
-onMounted(() => { window.addEventListener("keydown", onKey); loadQueue(); });
+// 速览偏移/换单元时 shownImage 变化 → 刷新真图（换题时 loadQueue 已显式刷新一次）
+watch(shownImage, () => { refreshImg(); });
+
+onMounted(async () => {
+  window.addEventListener("keydown", onKey);
+  await initProblems();
+  await loadQueue();
+});
 onUnmounted(() => window.removeEventListener("keydown", onKey));
 </script>
 
 <template>
   <section class="grade" v-if="current">
+    <header class="picker">
+      题目：
+      <button v-for="p in problems" :key="p.id" :class="{ on: p.number === problemNumber }"
+              @click="onSelectProblem(p.number)">题{{ p.number }}</button>
+    </header>
     <n-alert v-if="errorMsg" type="error" :title="errorMsg" closable @close="errorMsg = ''" />
     <div class="pane">
       <div class="img">
-        <img v-if="isRealImage(shownImage)" :src="shownImage!" alt="答卷" />
+        <img v-if="imgUrl" :src="imgUrl" alt="答卷" />
         <div v-else class="placeholder">
           <div>占位图（无真实扫描）</div>
           <div>{{ current.student_name }} · 题{{ problemNumber }}
@@ -151,11 +191,22 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
       </div>
     </n-modal>
   </section>
-  <section v-else class="grade"><p>队列为空。先到"考试设置"打开或新建一场考试。</p></section>
+  <section v-else class="grade">
+    <header class="picker">
+      题目：
+      <button v-for="p in problems" :key="p.id" :class="{ on: p.number === problemNumber }"
+              @click="onSelectProblem(p.number)">题{{ p.number }}</button>
+    </header>
+    <n-alert v-if="errorMsg" type="error" :title="errorMsg" closable @close="errorMsg = ''" />
+    <p>队列为空。先到"考试设置"打开或新建一场考试，或导入图片文件夹并标注。</p>
+  </section>
 </template>
 
 <style scoped>
 .grade { height: 100vh; display: flex; flex-direction: column; font-family: ui-monospace, monospace; color: #d0d0d0; background: #14161a; }
+.picker { border-bottom: 1px solid #333; padding: 8px 12px; font-size: 13px; }
+.picker button { background: none; border: 1px solid #444; color: #d0d0d0; padding: 2px 10px; margin-left: 6px; cursor: pointer; font-family: inherit; }
+.picker button.on { border-color: #7fd; color: #7fd; }
 .pane { flex: 1; display: flex; }
 .img { flex: 1; display: flex; align-items: center; justify-content: center; }
 .img img { max-width: 100%; max-height: 100%; }

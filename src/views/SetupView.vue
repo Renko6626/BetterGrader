@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
 import { open } from "@tauri-apps/plugin-dialog";
-import { newExam, openExam, seedDemoExam, currentExam, listProblems, listPresets, listStudents } from "../api";
+import { newExam, openExam, seedDemoExam, currentExam, listProblems, listPresets, listStudents, ingestFolder } from "../api";
 import type { Problem, Preset, Student, ExamInfo } from "../types";
 import { NButton, NCard, NDataTable, NAlert, NSpace, NTag } from "naive-ui";
 
@@ -10,6 +10,7 @@ const problems = ref<Problem[]>([]);
 const presetsByProblem = ref<Record<number, Preset[]>>({});
 const students = ref<Student[]>([]);
 const errorMsg = ref("");
+const ingestMsg = ref("");
 
 async function refresh() {
   exam.value = await currentExam();
@@ -33,6 +34,16 @@ async function withDir(fn: (dir: string) => Promise<number>) {
   try { const dir = await pickDir(); if (!dir) return; await fn(dir); await refresh(); }
   catch (e) { errorMsg.value = String(e); }
 }
+async function doIngest() {
+  errorMsg.value = "";
+  ingestMsg.value = "";
+  try {
+    const dir = await open({ directory: true, multiple: false, title: "选择图片文件夹" });
+    if (typeof dir !== "string") return;
+    const n = await ingestFolder(dir);
+    ingestMsg.value = `已导入 ${n} 张图（去"标注"页开始标注）`;
+  } catch (e) { errorMsg.value = String(e); }
+}
 onMounted(refresh);
 </script>
 
@@ -42,8 +53,10 @@ onMounted(refresh);
       <n-button @click="doNew">新建考试…</n-button>
       <n-button @click="doOpen">打开考试…</n-button>
       <n-button type="primary" @click="doDemo">新建演示考试…</n-button>
+      <n-button v-if="exam" @click="doIngest">导入图片文件夹…</n-button>
     </n-space>
     <n-alert v-if="errorMsg" type="error" :title="errorMsg" closable @close="errorMsg=''" style="margin-top:8px" />
+    <n-alert v-if="ingestMsg" type="success" :title="ingestMsg" closable @close="ingestMsg=''" style="margin-top:8px" />
     <p v-if="exam">当前：{{ exam.name }}</p>
     <p v-else>未打开考试。点上面按钮选一个目录。</p>
 
