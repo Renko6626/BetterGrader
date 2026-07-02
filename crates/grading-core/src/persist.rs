@@ -1,11 +1,12 @@
 use anyhow::Result;
+use rusqlite::OptionalExtension;
 use crate::{Db, ExamInfo, setup};
 
 /// 每个 exam.db 只含一场考试：已有则返回其 id，否则新建。
 pub fn ensure_exam(db: &Db, name: &str, date: &str) -> Result<i64> {
     let existing: Option<i64> = db.conn
         .query_row("SELECT id FROM exam ORDER BY id LIMIT 1", [], |r| r.get(0))
-        .ok();
+        .optional()?;
     match existing {
         Some(id) => Ok(id),
         None => setup::create_exam(db, name, date),
@@ -35,5 +36,17 @@ mod tests {
         let info = exam_info(&db, a).unwrap();
         assert_eq!(info.name, "某场奥赛");
         assert_eq!(info.date, "2026-07-02");
+    }
+
+    #[test]
+    fn exam_info_null_date_returns_empty_string() {
+        let db = Db::open_in_memory().unwrap();
+        // 直接插入 date 为 NULL 的一行
+        db.conn.execute("INSERT INTO exam(name, date) VALUES('X', NULL)", []).unwrap();
+        // 单库单场：ensure_exam 返回已有（NULL date）行的 id
+        let id = ensure_exam(&db, "无所谓", "2026-07-02").unwrap();
+        let info = exam_info(&db, id).unwrap();
+        assert_eq!(info.name, "X");
+        assert_eq!(info.date, ""); // NULL → 空串
     }
 }
