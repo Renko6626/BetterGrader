@@ -24,15 +24,21 @@ impl Db {
     }
 }
 
-// 既有库补 score.comment 列（新库已由 schema 建好，pragma 检测避免重复 ALTER）
+// 既有库补列（新库已由 schema 建好，pragma 检测避免重复 ALTER）
 pub(crate) fn migrate(conn: &Connection) -> Result<()> {
+    add_column_if_missing(conn, "score", "comment", "ALTER TABLE score ADD COLUMN comment TEXT")?;
+    add_column_if_missing(conn, "problem", "rubric", "ALTER TABLE problem ADD COLUMN rubric TEXT")?;
+    Ok(())
+}
+
+fn add_column_if_missing(conn: &Connection, table: &str, column: &str, alter_sql: &str) -> Result<()> {
     let has: i64 = conn.query_row(
-        "SELECT count(*) FROM pragma_table_info('score') WHERE name='comment'",
-        [],
+        "SELECT count(*) FROM pragma_table_info(?1) WHERE name=?2",
+        (table, column),
         |r| r.get(0),
     )?;
     if has == 0 {
-        conn.execute("ALTER TABLE score ADD COLUMN comment TEXT", [])?;
+        conn.execute(alter_sql, [])?;
     }
     Ok(())
 }
@@ -62,6 +68,18 @@ mod tests {
         super::migrate(&db.conn).unwrap();
         let has2: i64 = db.conn.query_row(
             "SELECT count(*) FROM pragma_table_info('score') WHERE name='comment'", [], |r| r.get(0)).unwrap();
+        assert_eq!(has2, 1);
+    }
+
+    #[test]
+    fn problem_has_rubric_column_and_migration_is_idempotent() {
+        let db = Db::open_in_memory().unwrap();
+        let has: i64 = db.conn.query_row(
+            "SELECT count(*) FROM pragma_table_info('problem') WHERE name='rubric'", [], |r| r.get(0)).unwrap();
+        assert_eq!(has, 1);
+        super::migrate(&db.conn).unwrap(); // 幂等
+        let has2: i64 = db.conn.query_row(
+            "SELECT count(*) FROM pragma_table_info('problem') WHERE name='rubric'", [], |r| r.get(0)).unwrap();
         assert_eq!(has2, 1);
     }
 }

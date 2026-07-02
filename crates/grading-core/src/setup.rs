@@ -33,11 +33,19 @@ pub fn add_preset(db: &Db, problem_id: i64, slot: i64, label: &str, points: i64)
 
 pub fn list_problems(db: &Db, exam_id: i64) -> Result<Vec<Problem>> {
     let mut stmt = db.conn.prepare(
-        "SELECT id, number, title, max_score FROM problem WHERE exam_id=?1 ORDER BY number")?;
+        "SELECT id, number, title, max_score, rubric FROM problem WHERE exam_id=?1 ORDER BY number")?;
     let rows = stmt.query_map([exam_id], |r| Ok(Problem {
-        id: r.get(0)?, number: r.get(1)?, title: r.get::<_, Option<String>>(2)?.unwrap_or_default(), max_score: r.get(3)?,
+        id: r.get(0)?, number: r.get(1)?, title: r.get::<_, Option<String>>(2)?.unwrap_or_default(),
+        max_score: r.get(3)?, rubric: r.get(4)?,
     }))?;
     Ok(rows.collect::<Result<_, _>>()?)
+}
+
+/// 设置本题评分标准（Markdown）。空白视为清空（存 NULL）。
+pub fn set_problem_rubric(db: &Db, problem_id: i64, rubric: &str) -> Result<()> {
+    let val: Option<&str> = if rubric.trim().is_empty() { None } else { Some(rubric) };
+    db.conn.execute("UPDATE problem SET rubric=?2 WHERE id=?1", (problem_id, val))?;
+    Ok(())
 }
 
 pub fn list_presets(db: &Db, problem_id: i64) -> Result<Vec<Preset>> {
@@ -97,7 +105,19 @@ mod tests {
         add_preset(&db, p, 2, "前两问", 9).unwrap();
         assert_eq!(list_presets(&db, p).unwrap().len(), 4);
         let probs = list_problems(&db, exam).unwrap();
-        assert_eq!(probs, vec![Problem { id: p, number: 3, title: "力学大题".into(), max_score: 20 }]);
+        assert_eq!(probs, vec![Problem { id: p, number: 3, title: "力学大题".into(), max_score: 20, rubric: None }]);
+    }
+
+    #[test]
+    fn set_and_clear_problem_rubric() {
+        let db = Db::open_in_memory().unwrap();
+        let exam = create_exam(&db, "假物理", "2026-07-02").unwrap();
+        let p = add_problem(&db, exam, 1, "题1", 10).unwrap();
+        assert_eq!(list_problems(&db, exam).unwrap()[0].rubric, None); // 建题默认无标准
+        set_problem_rubric(&db, p, "- 前两问各 3 分\n- 末问 4 分").unwrap();
+        assert_eq!(list_problems(&db, exam).unwrap()[0].rubric.as_deref(), Some("- 前两问各 3 分\n- 末问 4 分"));
+        set_problem_rubric(&db, p, "   ").unwrap(); // 空白 = 清空
+        assert_eq!(list_problems(&db, exam).unwrap()[0].rubric, None);
     }
 
     #[test]

@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct Problem { pub id: i64, pub number: i64, pub title: String, pub max_score: i64 }
+pub struct Problem { pub id: i64, pub number: i64, pub title: String, pub max_score: i64, pub rubric: Option<String> }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Preset { pub id: i64, pub slot: i64, pub label: String, pub points: i64 }

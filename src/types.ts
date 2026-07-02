@@ -1,4 +1,4 @@
-export interface Problem { id: number; number: number; title: string; max_score: number }
+export interface Problem { id: number; number: number; title: string; max_score: number; rubric: string | null }
 export interface Preset { id: number; slot: number; label: string; points: number }
 export interface Student { id: number; name: string; exam_number: string | null; roster_order: number | null }
 export type ScoreState = "Ungraded" | "Flagged" | "Graded";

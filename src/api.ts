@@ -18,6 +18,8 @@ export const addPreset = (problemId: number, slot: number, label: string, points
 export const deleteProblem = (problemId: number) => invoke<void>("delete_problem", { problemId });
 export const setProblemMax = (problemId: number, maxScore: number) =>
   invoke<void>("set_problem_max", { problemId, maxScore });
+export const setProblemRubric = (problemId: number, rubric: string) =>
+  invoke<void>("set_problem_rubric", { problemId, rubric });
 export const shiftStudentProblems = (studentId: number, delta: number) =>
   invoke<void>("shift_student_problems", { studentId, delta });
 export const deletePreset = (presetId: number) => invoke<void>("delete_preset", { presetId });

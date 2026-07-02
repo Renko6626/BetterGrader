@@ -117,6 +117,9 @@ pub fn set_problem_max(state: tauri::State<AppState>, problem_id: i64, max_score
         Ok(())
     })
 }
+#[tauri::command] pub fn set_problem_rubric(state: tauri::State<AppState>, problem_id: i64, rubric: String) -> R<()> {
+    with_exam(&state, |oe| setup::set_problem_rubric(&oe.db, problem_id, &rubric))
+}
 #[tauri::command] pub fn build_queue(state: tauri::State<AppState>, problem_number: i64) -> R<Vec<GradingUnit>> { with_exam(&state, |oe| grading::build_queue(&oe.db, oe.exam_id, problem_number)) }
 #[tauri::command] pub fn student_pages(state: tauri::State<AppState>, student_id: i64) -> R<Vec<PageRef>> { with_exam(&state, |oe| grading::student_pages(&oe.db, student_id)) }
 

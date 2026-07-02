@@ -9,6 +9,7 @@ import {
   type GradeState, type GradeCtx, type GradeEffect,
 } from "../composables/useGradeKeys";
 import GradeSidebar from "../components/GradeSidebar.vue";
+import { marked } from "marked";
 
 // 题目选择：列出各题，用户选中后载该题队列（不再固定 problemNumber=1）
 const problems = ref<Problem[]>([]);
@@ -47,8 +48,14 @@ const ctx = computed<GradeCtx>(() => ({
   peekMin: -(Math.max(peekPages.value.length - 1, 0)),
   peekMax: Math.max(peekPages.value.length - 1, 0),
 }));
-// 本题满分（面板标题用）与三态本地化
-const curMax = computed(() => problems.value.find(p => p.number === problemNumber.value)?.max_score ?? "");
+// 当前题（满分、评分标准都从它取）
+const curProblem = computed(() => problems.value.find(p => p.number === problemNumber.value) ?? null);
+const curMax = computed(() => curProblem.value?.max_score ?? "");
+// 评分标准渲染成 HTML（R 浮层用）；本地自用文本，v-html 无 XSS 顾虑
+const curRubricHtml = computed(() => {
+  const md = curProblem.value?.rubric;
+  return md && md.trim() ? (marked.parse(md, { async: false }) as string) : "";
+});
 const stateLabel = (s: string) =>
   (({ Graded: "已判", Flagged: "存疑", Ungraded: "未判", Absent: "缺考" } as Record<string, string>)[s] ?? s);
 // 本题进度计数
@@ -87,6 +94,7 @@ const average = computed(() => {
 });
 const sidebarCollapsed = ref(false); // 左侧悬浮面板收起态（Tab 切换）
 const showHelp = ref(false);         // 快捷键浮层（? 键 / 右栏 ? 按钮）
+const showRubric = ref(false);       // 评分标准浮层（R 键）
 // 考号映射（GradingUnit 只带姓名，考号从花名册取）
 const examNoMap = ref<Record<number, string | null>>({});
 const examNo = (sid: number) => examNoMap.value[sid] ?? null;
@@ -216,7 +224,10 @@ function onKey(e: KeyboardEvent) {
   if (commentFocused.value) return; // 评语框获焦时打字，绝不能被当成判分键拦截
   if (e.ctrlKey || e.metaKey || e.altKey) return; // 让 OS 快捷键（Ctrl+R/F、devtools 等）通过，绝不误触发落分
   if (e.key === "?") { e.preventDefault(); showHelp.value = !showHelp.value; return; } // ? 开关快捷键浮层
-  if (showHelp.value && e.key === "Escape") { e.preventDefault(); showHelp.value = false; return; } // 浮层开着时 Esc 先关它
+  if (e.key === "r" || e.key === "R") { e.preventDefault(); showRubric.value = !showRubric.value; return; } // R 开关评分标准浮层
+  if (e.key === "Escape" && (showHelp.value || showRubric.value)) { // 浮层开着时 Esc 先关它，不落到判分
+    e.preventDefault(); showHelp.value = false; showRubric.value = false; return;
+  }
   if (e.key === "Tab") { e.preventDefault(); sidebarCollapsed.value = !sidebarCollapsed.value; return; } // Tab 收起/展开左侧面板（同时避免焦点移入评语框废掉判分键）
   const before = gs.value;
   const r = reduceGradeKey(gs.value, e.key, ctx.value);
@@ -323,8 +334,18 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
           <div><kbd>→</kbd> 下一份　<kbd>←</kbd> 上一份（<kbd>Enter</kbd> 也下一份，<kbd>⌫</kbd> 也上一份）</div>
           <div><kbd>↑</kbd> 上一页　<kbd>↓</kbd> 下一页　<kbd>Esc</kbd> 回本题页</div>
           <div><kbd>F</kbd> 存疑　<kbd>J</kbd> 下一存疑　<kbd>G</kbd> 队列总览</div>
-          <div><kbd>Tab</kbd> 收起/展开左侧分布面板　<kbd>?</kbd> 本浮层</div>
+          <div><kbd>R</kbd> 评分标准　<kbd>Tab</kbd> 收起/展开左侧分布面板　<kbd>?</kbd> 本浮层</div>
           <div class="dim">滚轮缩放 · 拖拽平移 · 双击复位</div>
+        </div>
+      </div>
+
+      <!-- 评分标准浮层（R 开关 / 点背景或 Esc 关） -->
+      <div v-if="showRubric" class="rubric-pop" @click.self="showRubric = false">
+        <div class="rubric-card">
+          <div class="rc-head"><span>题{{ problemNumber }} · 评分标准</span>
+            <button title="关闭（R / Esc）" @click="showRubric = false">×</button></div>
+          <div v-if="curRubricHtml" class="rc-body" v-html="curRubricHtml"></div>
+          <div v-else class="rc-empty">本题还没填评分标准。到「考试设置」→ 本题下面「评分标准」里填（支持 Markdown）。</div>
         </div>
       </div>
     </div>
@@ -412,6 +433,27 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
 .help-card .hc-head button { background: none; border: none; color: #888; font-size: 20px; line-height: 1; cursor: pointer; }
 .help-card .dim { color: #888; margin-top: 4px; }
 .help-card kbd { background: #22262c; border: 1px solid #3a3f47; border-radius: 3px; padding: 0 5px; font-family: inherit; font-size: 11px; color: #e6e6e6; }
+/* 评分标准浮层 */
+.rubric-pop { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.45); display: flex; align-items: center; justify-content: center; z-index: 25; }
+.rubric-card { display: flex; flex-direction: column; width: min(680px, 82%); max-height: 82%; background: #1c1f24; border: 1px solid #444; border-radius: 6px; }
+.rc-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid #333; color: #cfe3ff; font-size: 14px; }
+.rc-head button { background: none; border: none; color: #888; font-size: 22px; line-height: 1; cursor: pointer; }
+.rc-empty { padding: 24px 16px; color: #888; font-size: 13px; }
+.rc-body { padding: 12px 20px 20px; overflow: auto; color: #d8dade; line-height: 1.7; font-size: 14px; }
+.rc-body :deep(h1), .rc-body :deep(h2), .rc-body :deep(h3) { color: #fff; margin: 14px 0 6px; line-height: 1.3; }
+.rc-body :deep(h1) { font-size: 20px; } .rc-body :deep(h2) { font-size: 17px; } .rc-body :deep(h3) { font-size: 15px; }
+.rc-body :deep(ul), .rc-body :deep(ol) { padding-left: 22px; margin: 6px 0; }
+.rc-body :deep(li) { margin: 3px 0; }
+.rc-body :deep(p) { margin: 6px 0; }
+.rc-body :deep(strong) { color: #7fd; }
+.rc-body :deep(code) { background: #22262c; border: 1px solid #333; border-radius: 3px; padding: 0 4px; font-size: 13px; }
+.rc-body :deep(pre) { background: #14161a; border: 1px solid #333; border-radius: 4px; padding: 10px; overflow: auto; }
+.rc-body :deep(pre) code { background: none; border: none; padding: 0; }
+.rc-body :deep(table) { border-collapse: collapse; margin: 8px 0; }
+.rc-body :deep(th), .rc-body :deep(td) { border: 1px solid #3a3f47; padding: 3px 8px; }
+.rc-body :deep(blockquote) { border-left: 3px solid #3a5570; margin: 6px 0; padding: 2px 12px; color: #b8bdc4; }
+.rc-body :deep(a) { color: #6cf; }
+.rc-body :deep(img) { max-width: 100%; }
 .comment { margin-top: 16px; display: flex; flex-direction: column; gap: 4px; }
 .comment label { font-size: 12px; color: #888; }
 .comment textarea {

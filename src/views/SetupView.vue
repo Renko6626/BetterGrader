@@ -4,7 +4,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import {
   newExam, openExam, seedDemoExam, currentExam, listProblems, listPresets, listStudents, ingestFolder,
   listPdfs, readPdf, savePdfPage, addStudent, renameStudent, deleteStudent,
-  addProblem, deleteProblem, setProblemMax, addPreset, deletePreset,
+  addProblem, deleteProblem, setProblemMax, addPreset, deletePreset, setProblemRubric,
 } from "../api";
 import type { Problem, Preset, Student, ExamInfo } from "../types";
 import { NButton, NCard, NDataTable, NAlert, NSpace, NInputNumber } from "naive-ui";
@@ -124,6 +124,11 @@ async function onEditMax(problemId: number, val: number | null) {
   try { await setProblemMax(problemId, Math.floor(val)); await refresh(); }
   catch (e) { errorMsg.value = String(e); }
 }
+async function onEditRubric(p: Problem) {
+  errorMsg.value = "";
+  try { await setProblemRubric(p.id, p.rubric ?? ""); }
+  catch (e) { errorMsg.value = String(e); }
+}
 async function doDeleteProblem(id: number) {
   if (window.confirm("删除该题及其档位/已打分数？")) {
     errorMsg.value = "";
@@ -204,6 +209,11 @@ onMounted(refresh);
             <n-button size="tiny" @click="doAddPreset(p.id)">加</n-button>
           </span>
         </div>
+        <div class="rubric-edit">
+          <span class="pl">评分标准：</span>
+          <textarea v-model="p.rubric" class="rb" @blur="onEditRubric(p)"
+            placeholder="本题评分标准/参考答案（Markdown，可选）——判分时按 R 呼出对照"></textarea>
+        </div>
       </div>
       <p v-if="!problems.length" class="hint">还没有题目。</p>
       <n-button size="small" @click="addOneProblem" style="margin-top:8px">＋ 添加一题</n-button>
@@ -230,4 +240,8 @@ onMounted(refresh);
 .addp .sel { background: #14161a; color: #d0d0d0; border: 1px solid #555; }
 .addp .il { width: 120px; background: #14161a; color: #d0d0d0; border: 1px solid #555; padding: 2px 4px; }
 .addp .ip { width: 56px; background: #14161a; color: #d0d0d0; border: 1px solid #555; padding: 2px 4px; }
+.rubric-edit { margin-top: 6px; display: flex; align-items: flex-start; gap: 8px; font-size: 12px; color: #b8bdc4; }
+.rubric-edit .pl { color: #9aa0a6; padding-top: 4px; white-space: nowrap; }
+.rubric-edit .rb { flex: 1; min-height: 54px; resize: vertical; background: #14161a; color: #d0d0d0;
+  border: 1px solid #555; padding: 4px 6px; font-family: ui-monospace, monospace; font-size: 12px; }
 </style>
