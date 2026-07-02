@@ -39,3 +39,6 @@ pub struct GradingUnit {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct PageRef { pub problem_number: i64, pub image_path: String }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ExamInfo { pub id: i64, pub name: String, pub date: String }
