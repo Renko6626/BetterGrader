@@ -104,6 +104,8 @@ pub fn build_export(db: &Db, exam_id: i64) -> Result<ExportData> {
     })
 }
 
+const ABSENT_MARK: &str = "缺考";
+
 fn csv_field(s: &str) -> String {
     if s.contains(',') || s.contains('"') || s.contains('\n') {
         format!("\"{}\"", s.replace('"', "\"\""))
@@ -123,7 +125,7 @@ pub fn export_to_csv(data: &ExportData) -> String {
     for r in &data.rows {
         let mut f = vec![csv_field(&r.name), csv_field(r.exam_number.as_deref().unwrap_or(""))];
         for c in &r.cells {
-            let cell = if r.absent { "缺考".to_string() }
+            let cell = if r.absent { ABSENT_MARK.to_string() }
                 else { match c.state.as_str() {
                     "Graded" => c.total.map(|t| t.to_string()).unwrap_or_default(),
                     "Flagged" => c.total.map(|t| format!("{t}?")).unwrap_or_else(|| "?".into()),
@@ -131,7 +133,7 @@ pub fn export_to_csv(data: &ExportData) -> String {
                 }};
             f.push(csv_field(&cell));
         }
-        f.push(if r.absent { "缺考".to_string() } else { r.total.map(|t| t.to_string()).unwrap_or_default() });
+        f.push(if r.absent { ABSENT_MARK.to_string() } else { r.total.map(|t| t.to_string()).unwrap_or_default() });
         if data.ranking_available {
             f.push(r.rank.map(|x| x.to_string()).unwrap_or_default());
         }
@@ -332,5 +334,30 @@ mod tests {
         let csv = export_to_csv(&build_export(&db, exam).unwrap());
         assert_eq!(csv.lines().next().unwrap(), "姓名,考号,题1,总分,排名");
         assert!(csv.lines().any(|l| l == "甲,,7,7,1")); // 考号 None → 空
+    }
+
+    #[test]
+    fn csv_field_escapes_per_rfc4180() {
+        assert_eq!(csv_field("王五"), "王五");                 // 无特殊字符不加引号
+        assert_eq!(csv_field("王,五"), "\"王,五\"");            // 逗号 → 包引号
+        assert_eq!(csv_field("李\"四"), "\"李\"\"四\"");        // 引号 → 双写并包引号
+        assert_eq!(csv_field("a\nb"), "\"a\nb\"");             // 换行 → 包引号
+    }
+
+    #[test]
+    fn csv_flagged_null_total_renders_question_mark() {
+        let db = Db::open_in_memory().unwrap();
+        let exam = create_exam(&db, "E", "2026-07-02").unwrap();
+        let p1 = add_problem(&db, exam, 1, "一", 10).unwrap();
+        import_roster(&db, exam, &[RosterRow{name:"甲".into(), exam_number:None}]).unwrap();
+        let s = list_students(&db, exam).unwrap();
+        db.conn.execute("INSERT INTO page(exam_id,student_id,problem_number,image_path,seq,status) VALUES(?1,?2,1,'x.jpg',0,'labeled')", (exam, s[0].id)).unwrap();
+        // 存疑但还没给数字：total=None, state=Flagged
+        set_score(&db, s[0].id, p1, None, None, ScoreState::Flagged).unwrap();
+        let csv = export_to_csv(&build_export(&db, exam).unwrap());
+        // 甲 该题单元 = "?"（关键断言：不是空、不是 "None?"）；
+        // 总分列为 "0"：build_export 对非缺考学生 stu_total 从 Some(0) 起，
+        // 而 null-total 的 Flagged 单元不累加，故总分保持 0。
+        assert!(csv.lines().any(|l| l == "甲,,?,0"), "got:\n{csv}");
     }
 }
