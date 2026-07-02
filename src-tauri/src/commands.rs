@@ -96,8 +96,8 @@ pub fn export_summary(state: tauri::State<AppState>) -> R<ExportData> {
 }
 
 #[tauri::command]
-pub fn save_csv(state: tauri::State<AppState>, path: String) -> R<()> {
-    let csv = with_exam(&state, |oe| Ok(export::export_to_csv(&export::build_export(&oe.db, oe.exam_id)?, false)))?;
+pub fn save_csv(state: tauri::State<AppState>, path: String, include_comments: bool) -> R<()> {
+    let csv = with_exam(&state, |oe| Ok(export::export_to_csv(&export::build_export(&oe.db, oe.exam_id)?, include_comments)))?;
     // 加 UTF-8 BOM，Excel 直接识别中文
     let mut bytes = vec![0xEF, 0xBB, 0xBF];
     bytes.extend_from_slice(csv.as_bytes());
@@ -164,4 +164,50 @@ pub fn add_student(state: tauri::State<AppState>, name: String, exam_number: Opt
 #[tauri::command]
 pub fn labeling_summary(state: tauri::State<AppState>) -> R<LabelSummary> {
     with_exam(&state, |oe| label::labeling_summary(&oe.db, oe.exam_id))
+}
+
+#[tauri::command]
+pub fn list_pdfs(_state: tauri::State<AppState>, dir: String) -> R<Vec<String>> {
+    let mut names = Vec::new();
+    for entry in std::fs::read_dir(&dir).map_err(e)? {
+        let entry = entry.map_err(e)?;
+        if !entry.file_type().map_err(e)?.is_file() { continue; }
+        let n = entry.file_name().to_string_lossy().to_string();
+        if n.rsplit('.').next().unwrap_or("").eq_ignore_ascii_case("pdf") { names.push(n); }
+    }
+    Ok(ingest::sort_scan_order(names))
+}
+#[tauri::command]
+pub fn read_pdf(_state: tauri::State<AppState>, dir: String, filename: String) -> R<Vec<u8>> {
+    if filename.contains('/') || filename.contains('\\') || filename.contains("..") { return Err("非法文件名".into()); }
+    std::fs::read(std::path::Path::new(&dir).join(&filename)).map_err(e)
+}
+#[tauri::command]
+pub fn save_pdf_page(state: tauri::State<AppState>, student_id: i64, page_index: i64, filename: String, bytes: Vec<u8>) -> R<()> {
+    if filename.contains('/') || filename.contains('\\') || filename.contains("..") { return Err("非法文件名".into()); }
+    let guard = state.0.lock().map_err(e)?;
+    let oe = guard.as_ref().ok_or_else(|| "no exam open".to_string())?;
+    let images = oe.dir.join("images");
+    std::fs::create_dir_all(&images).map_err(e)?;
+    std::fs::write(images.join(&filename), &bytes).map_err(e)?;
+    let seq = ingest::next_seq(&oe.db, oe.exam_id).map_err(e)?;
+    grading_core::label::add_labeled_page(&oe.db, oe.exam_id, student_id, page_index, &filename, seq).map_err(e)?;
+    Ok(())
+}
+#[tauri::command]
+pub fn set_comment(state: tauri::State<AppState>, student_id: i64, problem_id: i64, comment: String) -> R<()> {
+    with_exam(&state, |oe| grading::set_comment(&oe.db, student_id, problem_id, &comment))
+}
+#[tauri::command]
+pub fn rename_student(state: tauri::State<AppState>, student_id: i64, name: String) -> R<()> {
+    with_exam(&state, |oe| { oe.db.conn.execute("UPDATE student SET name=?2 WHERE id=?1", (student_id, &name))?; Ok(()) })
+}
+#[tauri::command]
+pub fn delete_student(state: tauri::State<AppState>, student_id: i64) -> R<()> {
+    with_exam(&state, |oe| {
+        oe.db.conn.execute("DELETE FROM page WHERE student_id=?1", [student_id])?;
+        oe.db.conn.execute("DELETE FROM score WHERE student_id=?1", [student_id])?;
+        oe.db.conn.execute("DELETE FROM student WHERE id=?1", [student_id])?;
+        Ok(())
+    })
 }
