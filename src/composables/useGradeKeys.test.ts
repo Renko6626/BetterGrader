@@ -11,24 +11,29 @@ describe("爽批态", () => {
     expect(r.effect).toEqual({ kind: "setPreset", slot: 3 });
     expect(r.state.index).toBe(0); // 不动
   });
-  it("Enter 提交并前进到下一学生", () => {
+  it("Enter / → 提交并前进到下一学生", () => {
     const r = reduceGradeKey(s0, "Enter", ctx);
     expect(r.effect).toEqual({ kind: "advance" });
     expect(r.state.index).toBe(1);
+    const r2 = reduceGradeKey(s0, "ArrowRight", ctx);
+    expect(r2.effect).toEqual({ kind: "advance" });
+    expect(r2.state.index).toBe(1);
   });
-  it("Backspace 回上一份（index 夹在 0）", () => {
+  it("Backspace / ← 回上一份（index 夹在 0）", () => {
     const r = reduceGradeKey({ ...s0, index: 2 }, "Backspace", ctx);
     expect(r.effect).toEqual({ kind: "back" });
     expect(r.state.index).toBe(1);
-    expect(reduceGradeKey(s0, "Backspace", ctx).state.index).toBe(0);
+    const r2 = reduceGradeKey({ ...s0, index: 2 }, "ArrowLeft", ctx);
+    expect(r2.effect).toEqual({ kind: "back" });
+    expect(r2.state.index).toBe(1);
+    expect(reduceGradeKey(s0, "ArrowLeft", ctx).state.index).toBe(0);
   });
-  it("←/→ 只读速览，夹在 peek 边界；↓/Esc 复位", () => {
-    const r1 = reduceGradeKey(s0, "ArrowRight", ctx);
+  it("↑/↓ 只读速览翻页，夹在 peek 边界；Esc 复位", () => {
+    const r1 = reduceGradeKey(s0, "ArrowDown", ctx);
     expect(r1.state.peek).toBe(1);
     expect(r1.effect).toEqual({ kind: "none" }); // 只读，不改分不换单元
-    const rMax = reduceGradeKey({ ...s0, peek: 2 }, "ArrowRight", ctx);
+    const rMax = reduceGradeKey({ ...s0, peek: 2 }, "ArrowDown", ctx);
     expect(rMax.state.peek).toBe(2); // 夹住
-    expect(reduceGradeKey({ ...s0, peek: 2 }, "ArrowDown", ctx).state.peek).toBe(0);
     expect(reduceGradeKey({ ...s0, peek: -1 }, "Escape", ctx).state.peek).toBe(0);
   });
   it("F 存疑、J 跳存疑、G 开队列总览", () => {
@@ -59,9 +64,9 @@ describe("爽批态", () => {
     expect(r.effect).toEqual({ kind: "advance" });
     expect(r.state.index).toBe(1);
   });
-  it("← 速览递减并夹在 peekMin", () => {
-    expect(reduceGradeKey(s0, "ArrowLeft", ctx).state.peek).toBe(-1);
-    const atMin = reduceGradeKey({ ...s0, peek: ctx.peekMin }, "ArrowLeft", ctx);
+  it("↑ 速览递减并夹在 peekMin", () => {
+    expect(reduceGradeKey(s0, "ArrowUp", ctx).state.peek).toBe(-1);
+    const atMin = reduceGradeKey({ ...s0, peek: ctx.peekMin }, "ArrowUp", ctx);
     expect(atMin.state.peek).toBe(ctx.peekMin);       // 夹住
     expect(atMin.effect).toEqual({ kind: "none" });   // 只读
   });

@@ -50,13 +50,15 @@ export function reduceGradeKey(state: GradeState, key: string, ctx: GradeCtx): G
   // 3) 爽批态
   if (/^[1-9]$/.test(key)) return { state, effect: { kind: "setPreset", slot: parseInt(key, 10) } };
   if (key === "m" || key === "M" || key === "0") return none({ ...state, manual: true, buffer: "" });
-  if (key === "Enter" || key === " ")
+  // ←/→ 或 Enter/Backspace：上/下一份（换人）
+  if (key === "Enter" || key === " " || key === "ArrowRight")
     return moveTo(state, clamp(state.index + 1, 0, ctx.queueLength - 1), { kind: "advance" });
-  if (key === "Backspace")
+  if (key === "Backspace" || key === "ArrowLeft")
     return moveTo(state, clamp(state.index - 1, 0, ctx.queueLength - 1), { kind: "back" });
-  if (key === "ArrowLeft") return none({ ...state, peek: clamp(state.peek - 1, ctx.peekMin, ctx.peekMax) });
-  if (key === "ArrowRight") return none({ ...state, peek: clamp(state.peek + 1, ctx.peekMin, ctx.peekMax) });
-  if (key === "ArrowDown" || key === "Escape") return none({ ...state, peek: 0 });
+  // ↑/↓：只读速览该生上/下一页；Esc 复位回本题页
+  if (key === "ArrowUp") return none({ ...state, peek: clamp(state.peek - 1, ctx.peekMin, ctx.peekMax) });
+  if (key === "ArrowDown") return none({ ...state, peek: clamp(state.peek + 1, ctx.peekMin, ctx.peekMax) });
+  if (key === "Escape") return none({ ...state, peek: 0 });
   if (key === "f" || key === "F") return { state, effect: { kind: "flag" } };
   if (key === "j" || key === "J") return { state, effect: { kind: "nextFlag" } };
   if (key === "g" || key === "G") return none({ ...state, overview: true });

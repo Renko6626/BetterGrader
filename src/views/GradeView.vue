@@ -320,8 +320,8 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
         <div class="help-card">
           <div class="hc-head"><span>快捷键</span><button title="关闭（Esc）" @click="showHelp = false">×</button></div>
           <div><kbd>1–9</kbd> 档位给分　<kbd>M</kbd>/<kbd>0</kbd> 手动输入</div>
-          <div><kbd>Enter</kbd> 下一份　<kbd>⌫ Backspace</kbd> 上一份</div>
-          <div><kbd>←</kbd> <kbd>→</kbd> 速览邻页　<kbd>↓</kbd>/<kbd>Esc</kbd> 复位速览</div>
+          <div><kbd>→</kbd> 下一份　<kbd>←</kbd> 上一份（<kbd>Enter</kbd> 也下一份，<kbd>⌫</kbd> 也上一份）</div>
+          <div><kbd>↑</kbd> 上一页　<kbd>↓</kbd> 下一页　<kbd>Esc</kbd> 回本题页</div>
           <div><kbd>F</kbd> 存疑　<kbd>J</kbd> 下一存疑　<kbd>G</kbd> 队列总览</div>
           <div><kbd>Tab</kbd> 收起/展开左侧分布面板　<kbd>?</kbd> 本浮层</div>
           <div class="dim">滚轮缩放 · 拖拽平移 · 双击复位</div>
