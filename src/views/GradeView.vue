@@ -231,7 +231,7 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
 </template>
 
 <style scoped>
-.grade { height: 100vh; display: flex; flex-direction: column; font-family: ui-monospace, monospace; color: #d0d0d0; background: #14161a; }
+.grade { height: 100%; display: flex; flex-direction: column; font-family: ui-monospace, monospace; color: #d0d0d0; background: #14161a; }
 .picker { border-bottom: 1px solid #333; padding: 8px 12px; font-size: 13px; }
 .picker button { background: none; border: 1px solid #444; color: #d0d0d0; padding: 2px 10px; margin-left: 6px; cursor: pointer; font-family: inherit; }
 .picker button.on { border-color: #7fd; color: #7fd; }

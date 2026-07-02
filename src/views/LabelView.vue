@@ -147,7 +147,7 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
 </template>
 
 <style scoped>
-.label { height: 100vh; display: flex; flex-direction: column; font-family: ui-monospace, monospace; color: #d0d0d0; }
+.label { height: 100%; display: flex; flex-direction: column; font-family: ui-monospace, monospace; color: #d0d0d0; }
 .pane { flex: 1; display: flex; min-height: 0; }
 .img { flex: 1; display: flex; align-items: center; justify-content: center; overflow: auto; }
 .img img { max-width: 100%; max-height: 100%; }

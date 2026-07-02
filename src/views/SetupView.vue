@@ -10,7 +10,7 @@ import { NButton, NCard, NDataTable, NAlert, NSpace, NTag } from "naive-ui";
 import type { DataTableColumns } from "naive-ui";
 import { usePdf } from "../composables/usePdf";
 
-const { renderToPngs } = usePdf();
+const { renderToJpegs } = usePdf();
 
 const exam = ref<ExamInfo | null>(null);
 const problems = ref<Problem[]>([]);
@@ -65,11 +65,11 @@ async function doImportPdfs() {
       try {
         const studentName = name.replace(/\.pdf$/i, "").trim() || name;
         const bytes = new Uint8Array(await readPdf(dir, name));
-        const pngs = await renderToPngs(bytes);           // 渲染在前：坏 PDF 在这里失败，不会先建学生
+        const jpegs = await renderToJpegs(bytes);         // 渲染在前：坏 PDF 在这里失败，不会先建学生
         const sid = await addStudent(studentName, null);
-        for (let idx = 0; idx < pngs.length; idx++) {
+        for (let idx = 0; idx < jpegs.length; idx++) {
           // page_index 0 = 姓名页(题0)，idx = 题号；problem_number = idx
-          await savePdfPage(sid, idx, `${sid}_${idx}.png`, Array.from(pngs[idx]));
+          await savePdfPage(sid, idx, `${sid}_${idx}.jpg`, Array.from(jpegs[idx]));
         }
         done++;
       } catch { failed.push(name); }
