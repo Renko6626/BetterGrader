@@ -71,3 +71,9 @@ pub struct ExportData {
     pub rows: Vec<StudentRow>, pub problem_stats: Vec<ProblemStat>,
     pub coverage: Coverage, pub ranking_available: bool,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct StackRow { pub student_id: i64, pub student_name: String, pub answer_pages: i64, pub problem_count: i64, pub count_ok: bool }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct LabelSummary { pub stacks: Vec<StackRow>, pub absent_students: Vec<Student>, pub unlabeled_pages: i64 }

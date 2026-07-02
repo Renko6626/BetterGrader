@@ -1,5 +1,5 @@
 use anyhow::Result;
-use crate::{Db, PageRow};
+use crate::{Db, PageRow, StackRow, LabelSummary, setup};
 
 pub fn list_pages(db: &Db, exam_id: i64) -> Result<Vec<PageRow>> {
     let mut stmt = db.conn.prepare(
@@ -27,6 +27,29 @@ pub fn add_student(db: &Db, exam_id: i64, name: &str, exam_number: Option<&str>)
         "INSERT INTO student(exam_id, name, exam_number, roster_order) VALUES(?1,?2,?3,?4)",
         (exam_id, name, exam_number, next))?;
     Ok(db.conn.last_insert_rowid())
+}
+
+pub fn labeling_summary(db: &Db, exam_id: i64) -> Result<LabelSummary> {
+    let problem_count = setup::list_problems(db, exam_id)?.len() as i64;
+    let students = setup::list_students(db, exam_id)?;
+
+    let mut stacks = Vec::new();
+    let mut absent_students = Vec::new();
+    for stu in &students {
+        let total_pages: i64 = db.conn.query_row(
+            "SELECT count(*) FROM page WHERE student_id=?1", [stu.id], |r| r.get(0))?;
+        if total_pages == 0 { absent_students.push(stu.clone()); continue; }
+        let answer_pages: i64 = db.conn.query_row(
+            "SELECT count(*) FROM page WHERE student_id=?1 AND problem_number >= 1", [stu.id], |r| r.get(0))?;
+        stacks.push(StackRow {
+            student_id: stu.id, student_name: stu.name.clone(),
+            answer_pages, problem_count, count_ok: answer_pages == problem_count,
+        });
+    }
+    let unlabeled_pages: i64 = db.conn.query_row(
+        "SELECT count(*) FROM page WHERE exam_id=?1 AND student_id IS NULL", [exam_id], |r| r.get(0))?;
+
+    Ok(LabelSummary { stacks, absent_students, unlabeled_pages })
 }
 
 #[cfg(test)]
@@ -57,5 +80,37 @@ mod tests {
         // 撤销标注 → 回 ingested
         set_page_label(&db, p0, None, None).unwrap();
         assert_eq!(list_pages(&db, exam).unwrap()[0].status, "ingested");
+    }
+
+    #[test]
+    fn summary_counts_pages_and_flags_mismatch_and_absent() {
+        use crate::setup::{add_problem, import_roster};
+        use crate::RosterRow;
+        let db = Db::open_in_memory().unwrap();
+        let exam = create_exam(&db, "E", "2026-07-03").unwrap();
+        add_problem(&db, exam, 1, "一", 10).unwrap();
+        add_problem(&db, exam, 2, "二", 10).unwrap();     // N=2
+        import_roster(&db, exam, &[
+            RosterRow{name:"甲".into(), exam_number:None},
+            RosterRow{name:"乙".into(), exam_number:None},
+            RosterRow{name:"丙".into(), exam_number:None},  // 丙 缺考
+        ]).unwrap();
+        let s: Vec<i64> = crate::setup::list_students(&db, exam).unwrap().iter().map(|x| x.id).collect();
+        // 甲：姓名页(0) + 题1 + 题2 = 答题页 2 == N ✓
+        for (seq,(pn)) in [(0,0),(1,1),(2,2)] { let id=add_ingested_page(&db,exam,&format!("j{seq}.jpg"),seq).unwrap(); set_page_label(&db,id,Some(s[0]),Some(pn)).unwrap(); }
+        // 乙：姓名页 + 只有题1 = 答题页 1 != 2 ✗（§7.0 报警）
+        for (seq,(pn)) in [(3,0),(4,1)] { let id=add_ingested_page(&db,exam,&format!("y{seq}.jpg"),seq).unwrap(); set_page_label(&db,id,Some(s[1]),Some(pn)).unwrap(); }
+        // 一张未标注
+        add_ingested_page(&db, exam, "x.jpg", 9).unwrap();
+
+        let sum = labeling_summary(&db, exam).unwrap();
+        let jia = sum.stacks.iter().find(|r| r.student_id==s[0]).unwrap();
+        assert_eq!((jia.answer_pages, jia.problem_count, jia.count_ok), (2, 2, true));
+        let yi = sum.stacks.iter().find(|r| r.student_id==s[1]).unwrap();
+        assert_eq!((yi.answer_pages, yi.count_ok), (1, false));   // 页数≠N
+        assert!(sum.stacks.iter().all(|r| r.student_id != s[2])); // 丙无 page → 不在 stacks
+        assert_eq!(sum.absent_students.len(), 1);                 // 丙 缺考
+        assert_eq!(sum.absent_students[0].name, "丙");
+        assert_eq!(sum.unlabeled_pages, 1);
     }
 }
