@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, h } from "vue";
-import { NConfigProvider, NSpace, NButton, NCard, NTag, NText, NAlert, NDataTable, darkTheme } from "naive-ui";
+import { NSpace, NButton, NCard, NTag, NText, NAlert, NDataTable } from "naive-ui";
 import type { DataTableColumns } from "naive-ui";
 import { seedFake, listProblems, listPresets, listStudents } from "../api";
 import type { Problem, Preset, Student } from "../types";
@@ -47,31 +47,29 @@ async function seed() {
 </script>
 
 <template>
-  <n-config-provider :theme="darkTheme">
-    <n-space vertical size="large" class="setup">
-      <n-space align="center">
-        <n-button type="primary" :loading="loading" @click="seed">载入假考试（M1 验收数据）</n-button>
-        <n-text v-if="examId !== null" depth="3">exam_id = {{ examId }}（判分视图会用这场）</n-text>
-      </n-space>
+  <n-space vertical size="large" class="setup">
+    <n-space align="center">
+      <n-button type="primary" :loading="loading" @click="seed">载入假考试（M1 验收数据）</n-button>
+      <n-text v-if="examId !== null" depth="3">exam_id = {{ examId }}（判分视图会用这场）</n-text>
+    </n-space>
 
-      <n-alert v-if="errorMsg" type="error" title="IPC 调用失败" closable @close="errorMsg = null">
-        {{ errorMsg }}
-      </n-alert>
+    <n-alert v-if="errorMsg" type="error" title="IPC 调用失败" closable @close="errorMsg = null">
+      {{ errorMsg }}
+    </n-alert>
 
-      <n-space vertical size="medium" v-if="problems.length" item-style="width: 100%">
-        <n-card v-for="p in problems" :key="p.id" size="small" :title="`题${p.number} · ${p.title}`">
-          <template #header-extra>
-            <n-tag type="info" size="small" round>满分 {{ p.max_score }}</n-tag>
-          </template>
-          <n-data-table :columns="presetColumns" :data="presetsByProblem[p.id] || []" :bordered="false" size="small" />
-        </n-card>
-      </n-space>
-
-      <n-card v-if="students.length" size="small" :title="`花名册（${students.length} 人）`">
-        <n-data-table :columns="studentColumns" :data="students" :bordered="false" size="small" />
+    <n-space vertical size="medium" v-if="problems.length" item-style="width: 100%">
+      <n-card v-for="p in problems" :key="p.id" size="small" :title="`题${p.number} · ${p.title}`">
+        <template #header-extra>
+          <n-tag type="info" size="small" round>满分 {{ p.max_score }}</n-tag>
+        </template>
+        <n-data-table :columns="presetColumns" :data="presetsByProblem[p.id] || []" :bordered="false" size="small" />
       </n-card>
     </n-space>
-  </n-config-provider>
+
+    <n-card v-if="students.length" size="small" :title="`花名册（${students.length} 人）`">
+      <n-data-table :columns="studentColumns" :data="students" :bordered="false" size="small" />
+    </n-card>
+  </n-space>
 </template>
 
 <style scoped>
