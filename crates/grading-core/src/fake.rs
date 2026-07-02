@@ -46,7 +46,7 @@ fn insert_page(db: &Db, exam_id: i64, student_id: i64, prob_no: i64, seq: &mut i
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{Db, grading::*, setup::*};
+    use crate::grading::{build_queue, student_pages};
 
     #[test]
     fn seed_produces_thick_data_for_axis2() {
