@@ -142,7 +142,7 @@ pub fn read_image(state: tauri::State<AppState>, filename: String) -> R<Vec<u8>>
     let guard = state.0.lock().map_err(e)?;
     let oe = guard.as_ref().ok_or_else(|| "no exam open".to_string())?;
     // 路径限定 images/ 内：拒绝分隔符/上跳
-    if filename.contains('/') || filename.contains('\\') || filename.contains("..") {
+    if filename.contains('/') || filename.contains('\\') || filename.contains("..") || filename.contains(':') {
         return Err("非法文件名".into());
     }
     let path = oe.dir.join("images").join(&filename);
@@ -179,12 +179,12 @@ pub fn list_pdfs(_state: tauri::State<AppState>, dir: String) -> R<Vec<String>> 
 }
 #[tauri::command]
 pub fn read_pdf(_state: tauri::State<AppState>, dir: String, filename: String) -> R<Vec<u8>> {
-    if filename.contains('/') || filename.contains('\\') || filename.contains("..") { return Err("非法文件名".into()); }
+    if filename.contains('/') || filename.contains('\\') || filename.contains("..") || filename.contains(':') { return Err("非法文件名".into()); }
     std::fs::read(std::path::Path::new(&dir).join(&filename)).map_err(e)
 }
 #[tauri::command]
 pub fn save_pdf_page(state: tauri::State<AppState>, student_id: i64, page_index: i64, filename: String, bytes: Vec<u8>) -> R<()> {
-    if filename.contains('/') || filename.contains('\\') || filename.contains("..") { return Err("非法文件名".into()); }
+    if filename.contains('/') || filename.contains('\\') || filename.contains("..") || filename.contains(':') { return Err("非法文件名".into()); }
     let guard = state.0.lock().map_err(e)?;
     let oe = guard.as_ref().ok_or_else(|| "no exam open".to_string())?;
     let images = oe.dir.join("images");
