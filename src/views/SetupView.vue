@@ -19,7 +19,7 @@ const presetColumns: DataTableColumns<Preset> = [
 ];
 
 const studentColumns: DataTableColumns<Student> = [
-  { title: "序号", key: "roster_order", width: 80 },
+  { title: "序号", key: "roster_order", width: 80, render: (row) => row.roster_order ?? "—" },
   { title: "姓名", key: "name" },
   { title: "考号", key: "exam_number", render: (row) => row.exam_number ?? "—" },
 ];
@@ -27,6 +27,10 @@ const studentColumns: DataTableColumns<Student> = [
 async function seed() {
   loading.value = true;
   errorMsg.value = null;
+  examId.value = null;
+  problems.value = [];
+  presetsByProblem.value = {};
+  students.value = [];
   try {
     examId.value = await seedFake();
     problems.value = await listProblems(examId.value);
