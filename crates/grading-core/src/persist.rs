@@ -13,6 +13,10 @@ pub fn ensure_exam(db: &Db, name: &str, date: &str) -> Result<i64> {
     }
 }
 
+pub fn exam_count(db: &Db) -> Result<i64> {
+    Ok(db.conn.query_row("SELECT count(*) FROM exam", [], |r| r.get(0))?)
+}
+
 pub fn exam_info(db: &Db, exam_id: i64) -> Result<ExamInfo> {
     let info = db.conn.query_row(
         "SELECT id, name, date FROM exam WHERE id=?1",
@@ -36,6 +40,14 @@ mod tests {
         let info = exam_info(&db, a).unwrap();
         assert_eq!(info.name, "某场奥赛");
         assert_eq!(info.date, "2026-07-02");
+    }
+
+    #[test]
+    fn exam_count_zero_then_one_after_create() {
+        let db = Db::open_in_memory().unwrap();
+        assert_eq!(exam_count(&db).unwrap(), 0); // 空库
+        setup::create_exam(&db, "某场考试", "2026-07-02").unwrap();
+        assert_eq!(exam_count(&db).unwrap(), 1); // 建考试后
     }
 
     #[test]
