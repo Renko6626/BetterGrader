@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from "vue";
-import { NModal } from "naive-ui";
+import { NModal, NAlert } from "naive-ui";
 import { buildQueue, listPresets, setScore, studentPages } from "../api";
 import type { GradingUnit, Preset, PageRef } from "../types";
 import {
@@ -16,6 +16,7 @@ const queue = ref<GradingUnit[]>([]);
 const presets = ref<Preset[]>([]);
 const gs = ref<GradeState>(initialGradeState());
 const peekPages = ref<PageRef[]>([]);   // 当前学生全部页，供轴2 速览
+const errorMsg = ref("");               // IPC 失败提示（落分失败必须可见）
 
 const current = computed(() => queue.value[gs.value.index]);
 const ctx = computed<GradeCtx>(() => ({
@@ -47,36 +48,41 @@ async function refreshPeek() {
 async function applyEffect(eff: GradeEffect) {
   const u = current.value;
   if (!u) return;
-  switch (eff.kind) {
-    case "setPreset": {
-      const pr = presets.value.find(p => p.slot === eff.slot);
-      if (!pr) return; // 该 slot 无档位，忽略
-      await setScore(u.student_id, u.problem_id, pr.points, pr.id, "Graded");
-      u.total = pr.points; u.state = "Graded"; u.preset_id = pr.id;
-      break;
+  errorMsg.value = ""; // 恢复动作先清掉旧的失败横幅
+  try {
+    switch (eff.kind) {
+      case "setPreset": {
+        const pr = presets.value.find(p => p.slot === eff.slot);
+        if (!pr) return; // 该 slot 无档位，忽略
+        await setScore(u.student_id, u.problem_id, pr.points, pr.id, "Graded");
+        u.total = pr.points; u.state = "Graded"; u.preset_id = pr.id;
+        break;
+      }
+      case "setManual":
+        await setScore(u.student_id, u.problem_id, eff.value, null, "Graded");
+        u.total = eff.value; u.state = "Graded"; u.preset_id = null;
+        break;
+      case "flag":
+        await setScore(u.student_id, u.problem_id, u.total, u.preset_id, "Flagged");
+        u.state = "Flagged";
+        break;
+      case "advance": case "back":
+        presets.value = await listPresets(current.value!.problem_id);
+        await refreshPeek();
+        break;
+      case "nextFlag": {
+        const next = queue.value.findIndex((x, i) => i > gs.value.index && x.state === "Flagged");
+        if (next >= 0) { gs.value = { ...gs.value, index: next, peek: 0, manual: false, buffer: "" }; await refreshPeek(); }
+        break;
+      }
+      case "jump":
+        gs.value = { ...gs.value, index: eff.index, peek: 0, manual: false, buffer: "", overview: false };
+        await refreshPeek();
+        break;
+      case "none": break;
     }
-    case "setManual":
-      await setScore(u.student_id, u.problem_id, eff.value, null, "Graded");
-      u.total = eff.value; u.state = "Graded"; u.preset_id = null;
-      break;
-    case "flag":
-      await setScore(u.student_id, u.problem_id, u.total, u.preset_id, "Flagged");
-      u.state = "Flagged";
-      break;
-    case "advance": case "back":
-      presets.value = await listPresets(current.value!.problem_id);
-      await refreshPeek();
-      break;
-    case "nextFlag": {
-      const next = queue.value.findIndex((x, i) => i > gs.value.index && x.state === "Flagged");
-      if (next >= 0) { gs.value = { ...gs.value, index: next, peek: 0, manual: false, buffer: "" }; await refreshPeek(); }
-      break;
-    }
-    case "jump":
-      gs.value = { ...gs.value, index: eff.index, peek: 0, manual: false, buffer: "", overview: false };
-      await refreshPeek();
-      break;
-    case "none": break;
+  } catch (e) {
+    errorMsg.value = String(e);
   }
 }
 
@@ -97,6 +103,7 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
 
 <template>
   <section class="grade" v-if="current">
+    <n-alert v-if="errorMsg" type="error" :title="errorMsg" closable @close="errorMsg = ''" />
     <div class="pane">
       <div class="img">
         <img v-if="isRealImage(shownImage)" :src="shownImage!" alt="答卷" />
@@ -124,7 +131,8 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
     </footer>
 
     <!-- 队列总览（G 打开） -->
-    <n-modal :show="gs.overview" @update:show="(v: boolean) => { if (!v) gs.overview = false; }">
+    <n-modal :show="gs.overview" :close-on-esc="false" :mask-closable="false"
+             @update:show="(v: boolean) => { if (!v) gs.overview = false; }">
       <div class="overview">
         <h3>队列总览（键 Esc 关闭，点击跳转）</h3>
         <ol>
