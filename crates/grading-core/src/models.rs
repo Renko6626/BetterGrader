@@ -60,6 +60,12 @@ pub struct ProblemStat { pub number: i64, pub max_score: i64, pub avg: Option<f6
 pub struct Coverage { pub roster: i64, pub absent: i64, pub units_total: i64, pub graded: i64, pub flagged: i64, pub ungraded: i64 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PageRow {
+    pub id: i64, pub seq: i64, pub image_path: String,
+    pub student_id: Option<i64>, pub problem_number: Option<i64>, pub status: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ExportData {
     pub exam: ExamInfo, pub problem_numbers: Vec<i64>, pub problem_max: Vec<i64>,
     pub rows: Vec<StudentRow>, pub problem_stats: Vec<ProblemStat>,
