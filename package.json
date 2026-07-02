@@ -1,0 +1,27 @@
+{
+  "name": "better-grader-frontend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "tauri": "tauri",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2",
+    "naive-ui": "^2",
+    "pinia": "^2",
+    "vue": "^3.4"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "@vitejs/plugin-vue": "^5",
+    "@vue/test-utils": "^2",
+    "happy-dom": "^14",
+    "typescript": "^5.4",
+    "vite": "^5",
+    "vitest": "^1.6",
+    "vue-tsc": "^2"
+  }
+}
