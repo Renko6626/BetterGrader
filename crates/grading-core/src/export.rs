@@ -16,9 +16,9 @@ pub fn build_export(db: &Db, exam_id: i64) -> Result<ExportData> {
     let mut cnt: Vec<i64> = vec![0; problems.len()];
 
     for stu in &students {
-        // 缺考 = 无任何 page
+        // 缺考 = 本场无任何 page
         let pages: i64 = db.conn.query_row(
-            "SELECT count(*) FROM page WHERE student_id=?1", [stu.id], |r| r.get(0))?;
+            "SELECT count(*) FROM page WHERE student_id=?1 AND exam_id=?2", (stu.id, exam_id), |r| r.get(0))?;
         let absent = pages == 0;
         if absent { absent_cnt += 1; }
 
@@ -46,14 +46,19 @@ pub fn build_export(db: &Db, exam_id: i64) -> Result<ExportData> {
                 ScoreState::Flagged => { flagged += 1; all_graded = false; }
                 ScoreState::Ungraded => { ungraded += 1; all_graded = false; }
             }
-            // 临时/已判分计入总分；未判不计
+            // 临时/已判分计入总分；未判不计。只有确有分值 (Some) 才累加，
+            // 避免 null-total 的 Flagged 单元用 0 拖低题目均分/学生总分。
             if matches!(state, ScoreState::Graded | ScoreState::Flagged) {
-                if let (Some(st), Some(t)) = (stu_total.as_mut(), total) { *st += t; }
-                // 题目级：有分即计入
-                sum[i] += total.unwrap_or(0);
-                cnt[i] += 1;
+                if let Some(t) = total {
+                    if let Some(st) = stu_total.as_mut() { *st += t; }
+                    // 题目级：有分即计入
+                    sum[i] += t;
+                    cnt[i] += 1;
+                }
             }
-            cells.push(Cell { total, state: state.as_str().into() });
+            // 不变量：Ungraded 单元 total 恒为 None（即便库中残留脏 total）。
+            let cell_total = if matches!(state, ScoreState::Ungraded) { None } else { total };
+            cells.push(Cell { total: cell_total, state: state.as_str().into() });
         }
 
         rows.push(StudentRow {
@@ -193,5 +198,72 @@ mod tests {
         let jiafirst = d.rows.iter().find(|r| r.name=="乙").unwrap();
         assert_eq!(jiafirst.rank, Some(1));
         assert_eq!(d.rows.iter().find(|r| r.name=="甲").unwrap().rank, Some(2));
+    }
+
+    // A1: 并列名次（标准竞赛：1,1,3）——两名 9 分并列第1，7 分跳到第3。
+    #[test]
+    fn tie_uses_standard_competition_ranking() {
+        let db = Db::open_in_memory().unwrap();
+        let exam = create_exam(&db, "E", "2026-07-02").unwrap();
+        let p1 = add_problem(&db, exam, 1, "一", 10).unwrap();
+        import_roster(&db, exam, &[
+            RosterRow{name:"甲".into(), exam_number:None},
+            RosterRow{name:"乙".into(), exam_number:None},
+            RosterRow{name:"丙".into(), exam_number:None},
+        ]).unwrap();
+        let s = list_students(&db, exam).unwrap();
+        for stu in &s {
+            db.conn.execute("INSERT INTO page(exam_id,student_id,problem_number,image_path,seq,status) VALUES(?1,?2,1,?3,0,'labeled')",
+                (exam, stu.id, format!("p{}.jpg", stu.id))).unwrap();
+        }
+        // 甲=9、乙=9、丙=7 → 甲/乙 并列第1，丙 第3（跳过 2）
+        set_score(&db, s[0].id, p1, Some(9), None, ScoreState::Graded).unwrap();
+        set_score(&db, s[1].id, p1, Some(9), None, ScoreState::Graded).unwrap();
+        set_score(&db, s[2].id, p1, Some(7), None, ScoreState::Graded).unwrap();
+        let d = build_export(&db, exam).unwrap();
+        assert!(d.ranking_available);
+        assert_eq!(d.rows.iter().find(|r| r.name=="甲").unwrap().rank, Some(1));
+        assert_eq!(d.rows.iter().find(|r| r.name=="乙").unwrap().rank, Some(1));
+        assert_eq!(d.rows.iter().find(|r| r.name=="丙").unwrap().rank, Some(3)); // 跳过第2
+    }
+
+    // A2: 全体缺考 → 无排名，每行 absent 且 rank=None。
+    #[test]
+    fn all_absent_no_ranking() {
+        let db = Db::open_in_memory().unwrap();
+        let exam = create_exam(&db, "E", "2026-07-02").unwrap();
+        add_problem(&db, exam, 1, "一", 10).unwrap();
+        import_roster(&db, exam, &[
+            RosterRow{name:"甲".into(), exam_number:None},
+            RosterRow{name:"乙".into(), exam_number:None},
+        ]).unwrap();
+        // 两人都不插 page → 全部缺考
+        let d = build_export(&db, exam).unwrap();
+        assert!(!d.ranking_available);
+        assert!(d.rows.iter().all(|r| r.absent));
+        assert!(d.rows.iter().all(|r| r.rank.is_none()));
+        assert_eq!(d.coverage.absent, 2);
+    }
+
+    // A3: 无人作答的题目 → scored_count=0，avg/rate 均为 None（不除零）。
+    #[test]
+    fn scored_count_zero_gives_none_avg_rate() {
+        let db = Db::open_in_memory().unwrap();
+        let exam = create_exam(&db, "E", "2026-07-02").unwrap();
+        let p1 = add_problem(&db, exam, 1, "一", 10).unwrap();
+        let _p2 = add_problem(&db, exam, 2, "二", 10).unwrap(); // 无人得分
+        import_roster(&db, exam, &[
+            RosterRow{name:"甲".into(), exam_number:None},
+        ]).unwrap();
+        let s = list_students(&db, exam).unwrap();
+        db.conn.execute("INSERT INTO page(exam_id,student_id,problem_number,image_path,seq,status) VALUES(?1,?2,1,?3,0,'labeled')",
+            (exam, s[0].id, "p.jpg")).unwrap();
+        set_score(&db, s[0].id, p1, Some(8), None, ScoreState::Graded).unwrap();
+        // 题2 未判 → scored_count=0
+        let d = build_export(&db, exam).unwrap();
+        let ps2 = d.problem_stats.iter().find(|p| p.number==2).unwrap();
+        assert_eq!(ps2.scored_count, 0);
+        assert_eq!(ps2.avg, None);
+        assert_eq!(ps2.rate, None);
     }
 }
