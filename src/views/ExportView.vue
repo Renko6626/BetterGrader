@@ -10,6 +10,7 @@ const data = ref<ExportData | null>(null);
 const errorMsg = ref("");
 const okMsg = ref("");
 const tried = ref(false); // 是否已尝试过计算（区分"从未点过"与"点过但无考试"）
+const includeComments = ref(false); // 导出 CSV 时是否含每题评语列
 
 async function load() {
   errorMsg.value = ""; okMsg.value = ""; tried.value = true;
@@ -22,7 +23,7 @@ async function doSaveCsv() {
     const path = await save({ title: "保存成绩表 CSV", defaultPath: "成绩表.csv",
       filters: [{ name: "CSV", extensions: ["csv"] }] });
     if (!path) return;
-    await saveCsv(path);
+    await saveCsv(path, includeComments.value);
     okMsg.value = `已保存：${path}`;
   } catch (e) { errorMsg.value = String(e); }
 }
@@ -49,6 +50,9 @@ function isNoExamError(msg: string): boolean {
       <n-button @click="load">计算成绩汇总</n-button>
       <n-button v-if="data" @click="doSaveCsv">保存 CSV…</n-button>
       <n-button v-if="data" @click="printReport">打印 / 导出 PDF</n-button>
+      <label v-if="data" class="include-comments">
+        <input type="checkbox" v-model="includeComments" /> 含每题评语列
+      </label>
     </n-space>
     <n-alert v-if="errorMsg && !isNoExamError(errorMsg)" type="error" :title="errorMsg" closable @close="errorMsg=''" style="margin-top:8px"/>
     <n-alert v-if="okMsg" type="success" :title="okMsg" closable @close="okMsg=''" style="margin-top:8px"/>
@@ -107,6 +111,7 @@ function isNoExamError(msg: string): boolean {
 
 <style scoped>
 .export { padding: 16px; font-family: ui-monospace, monospace; }
+.include-comments { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; }
 .coverage { margin: 12px 0; padding: 8px; border: 1px solid #444; }
 .report table { border-collapse: collapse; margin: 8px 0; width: 100%; }
 .report th, .report td { border: 1px solid #555; padding: 2px 8px; text-align: right; }

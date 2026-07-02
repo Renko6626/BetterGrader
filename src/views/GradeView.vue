@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from "vue";
 import { NModal, NAlert } from "naive-ui";
-import { buildQueue, listPresets, setScore, studentPages, listProblems } from "../api";
+import { buildQueue, listPresets, setScore, studentPages, listProblems, setComment } from "../api";
 import type { GradingUnit, Preset, PageRef, Problem } from "../types";
 import { useImage } from "../composables/useImage";
 import {
@@ -19,6 +19,8 @@ const gs = ref<GradeState>(initialGradeState());
 const peekPages = ref<PageRef[]>([]);   // 当前学生全部页，供轴2 速览
 const errorMsg = ref("");               // IPC 失败提示（落分失败必须可见）
 const { url: imgUrl, show: showImg } = useImage();
+const commentText = ref("");            // 当前单元评语（textarea 绑定）
+const commentFocused = ref(false);      // 获焦时 onKey 必须放行，不当判分键处理
 
 const current = computed(() => queue.value[gs.value.index]);
 const ctx = computed<GradeCtx>(() => ({
@@ -53,12 +55,28 @@ async function loadQueue() {
     presets.value = current.value ? await listPresets(current.value.problem_id) : [];
     await refreshPeek();
     await refreshImg();
+    syncComment();
   } catch (e) {
     errorMsg.value = String(e); // 未 seed 时 buildQueue 会拒绝，优雅降级为横幅+"队列为空"
   }
 }
 async function refreshPeek() {
   peekPages.value = current.value ? await studentPages(current.value.student_id) : [];
+}
+// 换单元后同步评语框显示为新单元的评语
+function syncComment() {
+  commentText.value = current.value?.comment ?? "";
+}
+// 评语框失焦时落库；成功后同步回本地 current.comment，避免下次读到旧值
+async function saveCurrentComment() {
+  const u = current.value;
+  if (!u) return;
+  try {
+    await setComment(u.student_id, u.problem_id, commentText.value);
+    (u as any).comment = commentText.value;
+  } catch (e) {
+    errorMsg.value = String(e);
+  }
 }
 async function refreshImg() {
   // 真图：当前速览页或当前单元首图；fake:// 或缺失走占位
@@ -100,15 +118,17 @@ async function applyEffect(eff: GradeEffect) {
       case "advance": case "back":
         presets.value = await listPresets(current.value!.problem_id);
         await refreshPeek();
+        syncComment();
         break;
       case "nextFlag": {
         const next = queue.value.findIndex((x, i) => i > gs.value.index && x.state === "Flagged");
-        if (next >= 0) { gs.value = { ...gs.value, index: next, peek: 0, manual: false, buffer: "" }; await refreshPeek(); }
+        if (next >= 0) { gs.value = { ...gs.value, index: next, peek: 0, manual: false, buffer: "" }; await refreshPeek(); syncComment(); }
         break;
       }
       case "jump":
         gs.value = { ...gs.value, index: eff.index, peek: 0, manual: false, buffer: "", overview: false };
         await refreshPeek();
+        syncComment();
         break;
       case "none": break;
     }
@@ -118,6 +138,7 @@ async function applyEffect(eff: GradeEffect) {
 }
 
 function onKey(e: KeyboardEvent) {
+  if (commentFocused.value) return; // 评语框获焦时打字，绝不能被当成判分键拦截
   if (e.ctrlKey || e.metaKey || e.altKey) return; // 让 OS 快捷键（Ctrl+R/F、devtools 等）通过，绝不误触发落分
   const before = gs.value;
   const r = reduceGradeKey(gs.value, e.key, ctx.value);
@@ -170,6 +191,12 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
         </ul>
         <p class="total">当前：{{ current.total ?? "—" }}｜{{ current.state }}</p>
         <p v-if="gs.manual" class="manual">手动输入：{{ gs.buffer || "_" }}（Enter 确认）</p>
+        <div class="comment">
+          <label>评语</label>
+          <textarea v-model="commentText" placeholder="本题评语（可选）"
+            @focus="commentFocused = true"
+            @blur="commentFocused = false; saveCurrentComment()"></textarea>
+        </div>
       </aside>
     </div>
     <footer>
@@ -215,6 +242,13 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
 .panel li { list-style: none; margin: 2px 0; }
 .total { margin-top: 12px; font-size: 18px; }
 .manual { color: #7fd; }
+.comment { margin-top: 16px; display: flex; flex-direction: column; gap: 4px; }
+.comment label { font-size: 12px; color: #888; }
+.comment textarea {
+  width: 100%; min-height: 72px; resize: vertical; box-sizing: border-box;
+  background: #1c1f24; color: #d0d0d0; border: 1px solid #444; padding: 6px;
+  font-family: inherit; font-size: 13px;
+}
 footer { border-top: 1px solid #333; padding: 8px 12px; font-size: 13px; }
 .overview { width: 480px; max-height: 70vh; background: #1c1f24; border: 1px solid #444; padding: 16px; overflow: auto; font-family: ui-monospace, monospace; color: #d0d0d0; }
 .overview li { cursor: pointer; padding: 2px 0; list-style: none; }
