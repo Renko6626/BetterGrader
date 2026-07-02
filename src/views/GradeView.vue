@@ -291,7 +291,7 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
     </header>
     <n-alert v-if="errorMsg" type="error" :title="errorMsg" closable @close="errorMsg = ''" />
     <div class="pane">
-      <GradeSidebar :collapsed="sidebarCollapsed" :average="average" :dist="dist"
+      <GradeSidebar :collapsed="sidebarCollapsed" :average="average" :dist="dist" :rubric-html="curRubricHtml"
                     @toggle="sidebarCollapsed = !sidebarCollapsed" />
       <div class="img" @wheel.prevent="onWheel" @mousedown="onImgDown" @mousemove="onImgMove"
            @mouseup="onImgUp" @mouseleave="onImgUp" @dblclick="resetZoom">
