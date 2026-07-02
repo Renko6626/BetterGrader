@@ -5,6 +5,8 @@ pub mod grading;
 pub mod fake;
 pub mod persist;
 pub mod export;
+pub mod ingest;
+pub mod label;
 
 pub use db::Db;
 pub use models::*;
