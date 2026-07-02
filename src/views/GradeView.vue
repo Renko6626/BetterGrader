@@ -60,6 +60,23 @@ const counts = computed(() => {
   }
   return c;
 });
+// 本题已判分数分布（实时直方图，校准标准漂移）
+const dist = computed(() => {
+  const max = Number(curMax.value) || 0;
+  const perPoint = max > 0 && max <= 20;          // 满分≤20：每分一柱；否则 0..max 均分 11 柱
+  const binCount = perPoint ? max + 1 : 11;
+  const bins = Array.from({ length: binCount }, () => 0);
+  let total = 0;
+  for (const u of queue.value) {
+    if ((u.state === "Graded" || u.state === "Flagged") && u.total != null) {
+      const t = Math.max(0, Math.min(max, u.total));
+      const idx = perPoint ? t : Math.min(binCount - 1, Math.round((t / (max || 1)) * (binCount - 1)));
+      bins[idx]++; total++;
+    }
+  }
+  return { bins, peak: Math.max(1, ...bins), perPoint, max, total, binCount };
+});
+const binScore = (i: number) => dist.value.perPoint ? i : Math.round(i / (dist.value.binCount - 1) * dist.value.max);
 
 // 速览时显示哪张图：peek=0 → 当前 (学生,题号) 的首张；否则在该生全部页里偏移
 const shownImage = computed(() => {
@@ -239,6 +256,15 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
         </ul>
         <p class="total">当前：{{ current.total ?? "—" }}｜{{ stateLabel(current.state) }}</p>
         <p v-if="gs.manual" class="manual">手动输入：{{ gs.buffer || "_" }}（Enter 确认）</p>
+        <div class="dist" v-if="dist.total">
+          <div class="dh">本题分布 · 已判 {{ dist.total }} 份</div>
+          <div class="bars">
+            <div v-for="(c, i) in dist.bins" :key="i" class="bar"
+                 :style="{ height: (c / dist.peak * 100) + '%' }"
+                 :title="`${binScore(i)} 分：${c} 人`"></div>
+          </div>
+          <div class="axis"><span>0</span><span>满分 {{ dist.max }}</span></div>
+        </div>
         <div class="comment">
           <label>评语</label>
           <textarea v-model="commentText" placeholder="本题评语（可选）"
@@ -310,6 +336,11 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
 .preset-list .pt { color: #9aa0a6; }
 .total { margin-top: 12px; font-size: 18px; }
 .manual { color: #7fd; }
+.dist { margin-top: 14px; }
+.dist .dh { font-size: 12px; color: #9aa0a6; margin-bottom: 4px; }
+.dist .bars { display: flex; align-items: flex-end; gap: 2px; height: 84px; border-bottom: 1px solid #333; }
+.dist .bar { flex: 1; background: #4f8cff; min-width: 3px; }
+.dist .axis { display: flex; justify-content: space-between; font-size: 11px; color: #888; margin-top: 2px; }
 .legend { margin-top: 16px; border-top: 1px solid #2a2d33; padding-top: 10px; font-size: 12px; line-height: 1.9; color: #b8bdc4; }
 .legend .lh { color: #9aa0a6; margin-bottom: 4px; }
 .legend .dim { color: #888; margin-top: 4px; }
