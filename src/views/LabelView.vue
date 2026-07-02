@@ -14,6 +14,8 @@ const ls = ref<LabelState>(initialLabelState());
 const { url, show } = useImage();
 const errorMsg = ref("");
 const pickQuery = ref("");
+const problemInput = ref("");      // 「只切题」：直接改本页题号的输入框
+const problemFocused = ref(false); // 输入框获焦时放行键盘，不进 reducer
 
 const cur = computed(() => pages.value[ls.value.index] ?? null);
 const ctx = computed(() => ({ pageCount: pages.value.length }));
@@ -22,6 +24,40 @@ const filteredStudents = computed(() => {
   if (!q) return students.value;
   return students.value.filter(s => s.name.toLowerCase().includes(q) || (s.exam_number ?? "").toLowerCase().includes(q));
 });
+
+const studentNameOf = (id: number | null) =>
+  id == null ? null : (students.value.find(s => s.id === id)?.name ?? `#${id}`);
+// 本页真实归属（读已标状态，不是 reducer 的手动流状态）
+const curLabel = computed(() => {
+  const c = cur.value;
+  if (!c) return "—";
+  const who = studentNameOf(c.student_id) ?? "未绑定";
+  const q = c.problem_number == null ? "未标注" : (c.problem_number === 0 ? "姓名页" : `题${c.problem_number}`);
+  return `${who} · ${q}`;
+});
+// 翻页/加载后：把题号输入框同步成本页真实题号；本页若已绑学生，让手动流从这里续
+function syncPageEdit() {
+  const c = cur.value;
+  problemInput.value = c && c.problem_number != null ? String(c.problem_number) : "";
+  if (c && c.student_id != null) {
+    ls.value = { ...ls.value, currentStudent: c.student_id, nextProblem: (c.problem_number ?? 0) + 1 };
+  }
+}
+// 只切题：保留本页已绑的学生，仅改题号（0=姓名页）；不改学生
+async function applyProblemInput() {
+  const c = cur.value;
+  if (!c) return;
+  const t = problemInput.value.trim();
+  if (t === "") return;
+  const n = parseInt(t, 10);
+  if (Number.isNaN(n) || n < 0) { errorMsg.value = "题号需为 ≥0 的整数（0=姓名页）"; return; }
+  if (c.student_id == null) { errorMsg.value = "本页还没绑定学生——先用 S 选人，再改题号"; return; }
+  try {
+    await setPageLabel(c.id, c.student_id, n);
+    c.problem_number = n; c.status = "labeled";
+    errorMsg.value = "";
+  } catch (e) { errorMsg.value = String(e); }
+}
 
 async function reload() {
   try {
@@ -38,6 +74,7 @@ async function refreshImage() {
   } catch (e) {
     errorMsg.value = String(e);
   }
+  syncPageEdit(); // 每次换页同步题号输入框 + 手动流续接
 }
 async function refreshSummary() {
   try {
@@ -61,6 +98,7 @@ async function applyEffect(eff: LabelEffect, targetPage: PageRow | null) {
 }
 
 async function onKey(e: KeyboardEvent) {
+  if (problemFocused.value) return; // 改题号输入框获焦时放行，别把打字当判分/标注键
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   if (ls.value.picker) return; // 选人态交给 NModal 输入，不进 reducer
   const before = ls.value.index;
@@ -109,9 +147,18 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
         </div>
         <aside class="side">
           <p>第 {{ ls.index + 1 }} / {{ pages.length }} 张</p>
-          <p>当前学生：{{ ls.currentStudent ?? "—" }}</p>
-          <p>下一题号：{{ ls.nextProblem }}</p>
-          <p v-if="cur">本页：{{ cur.problem_number === 0 ? "姓名页" : (cur.problem_number ?? "未标注") }}</p>
+          <p class="cur">本页归属：<b>{{ curLabel }}</b></p>
+          <div class="edit">
+            <label>改本页题号
+              <input class="pn" v-model="problemInput" inputmode="numeric"
+                     @focus="problemFocused = true"
+                     @blur="problemFocused = false; applyProblemInput()"
+                     @keyup.enter="applyProblemInput()" />
+            </label>
+            <span class="hint">0=姓名页，回车生效，学生不变</span>
+          </div>
+          <hr class="sep" />
+          <p class="dim">手动流：当前学生 {{ studentNameOf(ls.currentStudent) ?? "—" }}｜下一题 {{ ls.nextProblem }}</p>
           <p class="keys">[S]姓名页/选人 [Enter]派题 [C]接上题 [N]跳题 [←→]翻页</p>
           <n-button size="small" @click="refreshSummary">刷新确认总表</n-button>
         </aside>
@@ -153,6 +200,15 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
 .img img { max-width: 100%; max-height: 100%; }
 .ph { border: 1px dashed #555; padding: 40px; color: #888; }
 .side { width: 260px; border-left: 1px solid #333; padding: 12px; }
+.side .cur { font-size: 15px; }
+.side .cur b { color: #7fd; }
+.side .edit { margin: 8px 0; }
+.side .edit label { display: inline-flex; align-items: center; gap: 6px; }
+.side .pn { width: 56px; background: #14161a; border: 1px solid #555; color: #d0d0d0;
+  font-family: inherit; padding: 3px 6px; text-align: center; }
+.side .hint { display: block; color: #888; font-size: 11px; margin-top: 4px; }
+.side .sep { border: none; border-top: 1px solid #2a2d33; margin: 12px 0; }
+.side .dim { color: #9aa0a6; font-size: 12px; }
 .side .keys { color: #888; font-size: 12px; margin-top: 12px; }
 .picklist { max-height: 220px; overflow: auto; margin: 8px 0; }
 .picklist li { cursor: pointer; padding: 2px 4px; list-style: none; }
