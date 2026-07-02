@@ -1,0 +1,28 @@
+# ---- Node / Vue (前端) ----
+node_modules/
+dist/
+dist-ssr/
+*.local
+.vite/
+
+# ---- Rust / Tauri (后端) ----
+target/
+**/target/
+Cargo.lock.orig
+
+# ---- 阅卷数据（绝不入库：含学生答卷图与成绩）----
+# 每场考试是一个自包含目录 /某场考试/{images/, exam.db}
+# 这些是隐私数据，永远不进版本管理
+*.db
+*.db-shm
+*.db-wal
+images/
+exams/
+考试数据/
+
+# ---- 编辑器 / 系统 ----
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
