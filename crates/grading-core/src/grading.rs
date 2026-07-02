@@ -1,4 +1,5 @@
 use anyhow::Result;
+use rusqlite::OptionalExtension;
 use crate::{Db, GradingUnit, PageRef, ScoreState};
 
 pub fn build_queue(db: &Db, exam_id: i64, problem_number: i64) -> Result<Vec<GradingUnit>> {
@@ -25,7 +26,7 @@ pub fn build_queue(db: &Db, exam_id: i64, problem_number: i64) -> Result<Vec<Gra
             "SELECT total, state, preset_id FROM score WHERE student_id=?1 AND problem_id=?2",
             (sid, problem_id),
             |r| Ok((r.get::<_, Option<i64>>(0)?, r.get::<_, String>(1)?, r.get::<_, Option<i64>>(2)?)),
-        ).ok();
+        ).optional()?;
         let (total, state, preset_id) = match row {
             Some((t, s, pid)) => (t, ScoreState::from_str(&s), pid),
             None => (None, ScoreState::Ungraded, None),
@@ -102,5 +103,37 @@ mod tests {
         assert_eq!(q3[0].total, Some(5));
         assert_eq!(q3[0].state, ScoreState::Flagged);
         assert_eq!(q3[0].preset_id, None);   // 手动输入 preset_id=NULL
+    }
+
+    #[test]
+    fn build_queue_collects_overflow_pages_in_seq_order() {
+        let db = Db::open_in_memory().unwrap();
+        let (exam, _prob, _) = seed(&db);
+        let sid = build_queue(&db, exam, 1).unwrap()[0].student_id;
+        // 同一 (学生,题1) 三张溢出页，seq 乱序插入
+        for (seq, name) in [(3, "c.jpg"), (1, "a.jpg"), (2, "b.jpg")] {
+            db.conn.execute(
+                "INSERT INTO page(exam_id, student_id, problem_number, image_path, seq, status) VALUES(?1,?2,1,?3,?4,'labeled')",
+                (exam, sid, name, seq)).unwrap();
+        }
+        let unit = build_queue(&db, exam, 1).unwrap().into_iter().find(|u| u.student_id == sid).unwrap();
+        assert_eq!(unit.pages, vec!["a.jpg", "b.jpg", "c.jpg"]); // 按 seq 排序
+    }
+
+    #[test]
+    fn student_pages_returns_all_pages_ordered_by_seq() {
+        let db = Db::open_in_memory().unwrap();
+        let (exam, _prob, _) = seed(&db);
+        let sid = build_queue(&db, exam, 1).unwrap()[0].student_id;
+        // 姓名页(题0) + 题1 + 题2，seq 交错插入
+        for (seq, pnum, name) in [(2, 1, "q1.jpg"), (0, 0, "cover.jpg"), (1, 1, "q1b.jpg"), (3, 2, "q2.jpg")] {
+            db.conn.execute(
+                "INSERT INTO page(exam_id, student_id, problem_number, image_path, seq, status) VALUES(?1,?2,?3,?4,?5,'labeled')",
+                (exam, sid, pnum, name, seq)).unwrap();
+        }
+        let pages = student_pages(&db, sid).unwrap();
+        assert_eq!(pages.iter().map(|p| p.image_path.clone()).collect::<Vec<_>>(),
+                   vec!["cover.jpg", "q1b.jpg", "q1.jpg", "q2.jpg"]);
+        assert_eq!(pages[0].problem_number, 0); // 姓名页
     }
 }
