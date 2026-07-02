@@ -19,8 +19,22 @@ impl Db {
     }
     fn init(conn: Connection) -> Result<Db> {
         conn.execute_batch(&format!("PRAGMA foreign_keys=ON;\n{SCHEMA}"))?;
+        migrate(&conn)?;
         Ok(Db { conn })
     }
+}
+
+// 既有库补 score.comment 列（新库已由 schema 建好，pragma 检测避免重复 ALTER）
+pub(crate) fn migrate(conn: &Connection) -> Result<()> {
+    let has: i64 = conn.query_row(
+        "SELECT count(*) FROM pragma_table_info('score') WHERE name='comment'",
+        [],
+        |r| r.get(0),
+    )?;
+    if has == 0 {
+        conn.execute("ALTER TABLE score ADD COLUMN comment TEXT", [])?;
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -35,5 +49,19 @@ mod tests {
             [], |r| r.get(0),
         ).unwrap();
         assert_eq!(count, 8);
+    }
+
+    #[test]
+    fn score_has_comment_column_and_migration_is_idempotent() {
+        let db = Db::open_in_memory().unwrap();
+        // 列存在
+        let has: i64 = db.conn.query_row(
+            "SELECT count(*) FROM pragma_table_info('score') WHERE name='comment'", [], |r| r.get(0)).unwrap();
+        assert_eq!(has, 1);
+        // 再跑一次迁移不报错（幂等）
+        super::migrate(&db.conn).unwrap();
+        let has2: i64 = db.conn.query_row(
+            "SELECT count(*) FROM pragma_table_info('score') WHERE name='comment'", [], |r| r.get(0)).unwrap();
+        assert_eq!(has2, 1);
     }
 }

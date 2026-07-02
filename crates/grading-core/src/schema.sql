@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS score (
   id INTEGER PRIMARY KEY,
   student_id INTEGER NOT NULL, problem_id INTEGER NOT NULL,
   total INTEGER, state TEXT NOT NULL DEFAULT 'Ungraded',
-  preset_id INTEGER, grader TEXT, submitted_at TEXT,
+  preset_id INTEGER, comment TEXT, grader TEXT, submitted_at TEXT,
   UNIQUE(student_id, problem_id)
 );
 -- 【占位·v1 不录入】未来题内步级诊断
