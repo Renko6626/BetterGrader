@@ -12,6 +12,8 @@ fn main() {
             commands::list_problems, commands::list_presets, commands::list_students,
             commands::build_queue, commands::set_score, commands::student_pages
             , commands::export_summary, commands::save_csv
+            , commands::ingest_folder, commands::read_image, commands::list_pages,
+              commands::set_page_label, commands::add_student, commands::labeling_summary
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

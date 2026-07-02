@@ -1,7 +1,7 @@
 use std::sync::Mutex;
 use std::path::PathBuf;
 use grading_core::{Db, ExamInfo, Problem, Preset, Student, GradingUnit, PageRef, ScoreState, ExportData,
-                   persist, setup, grading, fake, export};
+                   persist, setup, grading, fake, export, ingest, label, PageRow, LabelSummary};
 
 pub struct OpenExam {
     pub db: Db,
@@ -102,4 +102,65 @@ pub fn save_csv(state: tauri::State<AppState>, path: String) -> R<()> {
     let mut bytes = vec![0xEF, 0xBB, 0xBF];
     bytes.extend_from_slice(csv.as_bytes());
     std::fs::write(&path, bytes).map_err(e)
+}
+
+#[tauri::command]
+pub fn ingest_folder(state: tauri::State<AppState>, src_dir: String) -> R<usize> {
+    let guard = state.0.lock().map_err(e)?;
+    let oe = guard.as_ref().ok_or_else(|| "no exam open".to_string())?;
+    let src = PathBuf::from(&src_dir);
+    let images = oe.dir.join("images");
+    std::fs::create_dir_all(&images).map_err(e)?;
+
+    // 枚举图片文件名（仅文件、扩展名匹配）
+    let mut names: Vec<String> = Vec::new();
+    for entry in std::fs::read_dir(&src).map_err(e)? {
+        let entry = entry.map_err(e)?;
+        if !entry.file_type().map_err(e)?.is_file() { continue; }
+        let name = entry.file_name().to_string_lossy().to_string();
+        let ext = name.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
+        if matches!(ext.as_str(), "jpg" | "jpeg" | "png" | "webp") { names.push(name); }
+    }
+    let ordered = ingest::sort_scan_order(names);
+
+    let mut seq = ingest::next_seq(&oe.db, oe.exam_id).map_err(e)?;
+    let mut count = 0usize;
+    for name in ordered {
+        // 目标文件名避免冲突：已存在则加 seq 前缀
+        let mut dest_name = name.clone();
+        if images.join(&dest_name).exists() { dest_name = format!("{seq}_{name}"); }
+        std::fs::copy(src.join(&name), images.join(&dest_name)).map_err(e)?;
+        ingest::add_ingested_page(&oe.db, oe.exam_id, &dest_name, seq).map_err(e)?;
+        seq += 1; count += 1;
+    }
+    Ok(count)
+}
+
+#[tauri::command]
+pub fn read_image(state: tauri::State<AppState>, filename: String) -> R<Vec<u8>> {
+    let guard = state.0.lock().map_err(e)?;
+    let oe = guard.as_ref().ok_or_else(|| "no exam open".to_string())?;
+    // 路径限定 images/ 内：拒绝分隔符/上跳
+    if filename.contains('/') || filename.contains('\\') || filename.contains("..") {
+        return Err("非法文件名".into());
+    }
+    let path = oe.dir.join("images").join(&filename);
+    std::fs::read(&path).map_err(e)
+}
+
+#[tauri::command]
+pub fn list_pages(state: tauri::State<AppState>) -> R<Vec<PageRow>> {
+    with_exam(&state, |oe| label::list_pages(&oe.db, oe.exam_id))
+}
+#[tauri::command]
+pub fn set_page_label(state: tauri::State<AppState>, page_id: i64, student_id: Option<i64>, problem_number: Option<i64>) -> R<()> {
+    with_exam(&state, |oe| label::set_page_label(&oe.db, page_id, student_id, problem_number))
+}
+#[tauri::command]
+pub fn add_student(state: tauri::State<AppState>, name: String, exam_number: Option<String>) -> R<i64> {
+    with_exam(&state, |oe| label::add_student(&oe.db, oe.exam_id, &name, exam_number.as_deref()))
+}
+#[tauri::command]
+pub fn labeling_summary(state: tauri::State<AppState>) -> R<LabelSummary> {
+    with_exam(&state, |oe| label::labeling_summary(&oe.db, oe.exam_id))
 }
