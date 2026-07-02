@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from "vue";
 import { NModal, NAlert } from "naive-ui";
-import { buildQueue, listPresets, setScore, studentPages, listProblems, setComment } from "../api";
+import { buildQueue, listPresets, setScore, studentPages, listProblems, setComment, listStudents } from "../api";
 import type { GradingUnit, Preset, PageRef, Problem } from "../types";
 import { useImage } from "../composables/useImage";
 import {
@@ -86,6 +86,14 @@ const average = computed(() => {
   return n ? sum / n : null;
 });
 const sidebarCollapsed = ref(false); // 左侧悬浮面板收起态（Tab 切换）
+// 考号映射（GradingUnit 只带姓名，考号从花名册取）
+const examNoMap = ref<Record<number, string | null>>({});
+const examNo = (sid: number) => examNoMap.value[sid] ?? null;
+// 顶部进度条：已判/存疑各占一段
+const pct = computed(() => {
+  const n = queue.value.length || 1;
+  return { g: counts.value.graded / n * 100, f: counts.value.flagged / n * 100 };
+});
 
 // 速览时显示哪张图：peek=0 → 当前 (学生,题号) 的首张；否则在该生全部页里偏移
 const shownImage = computed(() => {
@@ -98,6 +106,13 @@ const shownImage = computed(() => {
 const isRealImage = (path: string | null) =>
   !!path && !path.startsWith("fake://"); // 真实文件用 convertFileSrc；此处仅判断是否占位
 
+async function loadStudents() {
+  try {
+    const m: Record<number, string | null> = {};
+    for (const s of await listStudents()) m[s.id] = s.exam_number;
+    examNoMap.value = m;
+  } catch { /* 考号只是展示，取不到不影响判分 */ }
+}
 async function initProblems() {
   try {
     problems.value = await listProblems();
@@ -227,6 +242,7 @@ watch(shownImage, () => { refreshImg(); });
 
 onMounted(async () => {
   window.addEventListener("keydown", onKey);
+  await loadStudents();
   await initProblems();
   await loadQueue();
 });
@@ -236,14 +252,28 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
 <template>
   <section class="grade" v-if="current">
     <header class="picker">
-      <span class="tabs">题目：
-        <button v-for="p in problems" :key="p.id" :class="{ on: p.number === problemNumber }"
-                @click="onSelectProblem(p.number)">题{{ p.number }}</button>
-      </span>
-      <span class="prog">
-        本题 已判 <b>{{ counts.graded }}</b> · 存疑 {{ counts.flagged }} · 未判 <b class="ung">{{ counts.ungraded }}</b> / 共 {{ queue.length }}
+      <div class="row">
+        <span class="tabs">题目：
+          <button v-for="p in problems" :key="p.id" :class="{ on: p.number === problemNumber }"
+                  @click="onSelectProblem(p.number)">题{{ p.number }}</button>
+        </span>
+        <span class="who">
+          <b class="nm">{{ current.student_name }}</b>
+          <span v-if="examNo(current.student_id)" class="no">考号 {{ examNo(current.student_id) }}</span>
+          <span class="pos">第 {{ gs.index + 1 }} / {{ queue.length }} 份</span>
+          <span class="st" :class="current.state">{{ stateLabel(current.state) }}</span>
+        </span>
+      </div>
+      <div class="row">
+        <div class="pbar" :title="`已判 ${counts.graded}·存疑 ${counts.flagged}·未判 ${counts.ungraded} / 共 ${queue.length}`">
+          <div class="seg g" :style="{ width: pct.g + '%' }"></div>
+          <div class="seg f" :style="{ width: pct.f + '%' }"></div>
+        </div>
+        <span class="prog">
+          已判 <b>{{ counts.graded }}</b> · 存疑 <b class="flg">{{ counts.flagged }}</b> · 未判 <b class="ung">{{ counts.ungraded }}</b> / 共 {{ queue.length }}
+        </span>
         <button class="jump" :disabled="!counts.ungraded" @click="jumpToNextUngraded">下一个未判 →</button>
-      </span>
+      </div>
     </header>
     <n-alert v-if="errorMsg" type="error" :title="errorMsg" closable @close="errorMsg = ''" />
     <div class="pane">
@@ -284,11 +314,6 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
         </div>
       </aside>
     </div>
-    <footer>
-      本题进度 {{ gs.index + 1 }} / {{ queue.length }}
-      ｜已判 {{ counts.graded }} · 存疑 {{ counts.flagged }} · 未判 {{ counts.ungraded }}
-    </footer>
-
     <!-- 队列总览（G 打开） -->
     <n-modal :show="gs.overview" :close-on-esc="false" :mask-closable="false"
              @update:show="(v: boolean) => { if (!v) gs.overview = false; }">
@@ -318,13 +343,29 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
 
 <style scoped>
 .grade { height: 100%; display: flex; flex-direction: column; font-family: ui-monospace, monospace; color: #d0d0d0; background: #14161a; }
-.picker { border-bottom: 1px solid #333; padding: 8px 12px; font-size: 13px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.picker { border-bottom: 1px solid #333; padding: 8px 12px; font-size: 13px; display: flex; flex-direction: column; gap: 8px; }
+.picker .row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .picker .tabs button { background: none; border: 1px solid #444; color: #d0d0d0; padding: 2px 10px; margin-left: 6px; cursor: pointer; font-family: inherit; }
 .picker .tabs button.on { border-color: #7fd; color: #7fd; }
+/* 当前这份是谁 */
+.picker .who { display: flex; align-items: baseline; gap: 12px; margin-left: auto; white-space: nowrap; }
+.picker .who .nm { color: #fff; font-size: 15px; }
+.picker .who .no { color: #9aa0a6; font-size: 12px; }
+.picker .who .pos { color: #b8bdc4; }
+.picker .who .st { padding: 0 6px; border-radius: 3px; font-size: 12px; }
+.picker .who .st.Graded { color: #7fd; }
+.picker .who .st.Flagged { color: #fb7; }
+.picker .who .st.Ungraded { color: #888; }
+/* 进度条 */
+.picker .pbar { flex: 1; min-width: 160px; height: 10px; background: #22262c; border: 1px solid #333; border-radius: 5px; overflow: hidden; display: flex; }
+.picker .pbar .seg { height: 100%; transition: width .15s ease; }
+.picker .pbar .seg.g { background: #4f8cff; }
+.picker .pbar .seg.f { background: #d69138; }
 .picker .prog { color: #b8bdc4; white-space: nowrap; }
 .picker .prog b { color: #e6e6e6; }
+.picker .prog .flg { color: #fb7; }
 .picker .prog .ung { color: #fb7; }
-.picker .jump { margin-left: 10px; background: #22303f; border: 1px solid #3a5570; color: #cfe3ff; padding: 2px 10px; cursor: pointer; font-family: inherit; }
+.picker .jump { background: #22303f; border: 1px solid #3a5570; color: #cfe3ff; padding: 2px 10px; cursor: pointer; font-family: inherit; white-space: nowrap; }
 .picker .jump:disabled { opacity: 0.4; cursor: default; }
 .pane { flex: 1; display: flex; min-height: 0; position: relative; }
 .img { flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; cursor: grab; }
@@ -350,7 +391,6 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
   background: #1c1f24; color: #d0d0d0; border: 1px solid #444; padding: 6px;
   font-family: inherit; font-size: 13px;
 }
-footer { border-top: 1px solid #333; padding: 8px 12px; font-size: 13px; }
 .overview { width: 480px; max-height: 70vh; background: #1c1f24; border: 1px solid #444; padding: 16px; overflow: auto; font-family: ui-monospace, monospace; color: #d0d0d0; }
 .overview li { cursor: pointer; padding: 2px 0; list-style: none; }
 .overview li.cur { color: #7fd; }
