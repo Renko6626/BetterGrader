@@ -24,3 +24,18 @@ impl ScoreState {
         match s { "Flagged" => ScoreState::Flagged, "Graded" => ScoreState::Graded, _ => ScoreState::Ungraded }
     }
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct GradingUnit {
+    pub student_id: i64,
+    pub student_name: String,
+    pub problem_id: i64,
+    pub problem_number: i64,
+    pub pages: Vec<String>,          // 本 (学生,题号) 的图路径（溢出多张）
+    pub total: Option<i64>,
+    pub state: ScoreState,
+    pub preset_id: Option<i64>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PageRef { pub problem_number: i64, pub image_path: String }
