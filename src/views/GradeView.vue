@@ -8,6 +8,7 @@ import {
   initialGradeState, reduceGradeKey,
   type GradeState, type GradeCtx, type GradeEffect,
 } from "../composables/useGradeKeys";
+import GradeSidebar from "../components/GradeSidebar.vue";
 
 // 题目选择：列出各题，用户选中后载该题队列（不再固定 problemNumber=1）
 const problems = ref<Problem[]>([]);
@@ -76,7 +77,15 @@ const dist = computed(() => {
   }
   return { bins, peak: Math.max(1, ...bins), perPoint, max, total, binCount };
 });
-const binScore = (i: number) => dist.value.perPoint ? i : Math.round(i / (dist.value.binCount - 1) * dist.value.max);
+// 本题平均分（已判/存疑单元），左侧面板顶部显示
+const average = computed(() => {
+  let sum = 0, n = 0;
+  for (const u of queue.value) {
+    if ((u.state === "Graded" || u.state === "Flagged") && u.total != null) { sum += u.total; n++; }
+  }
+  return n ? sum / n : null;
+});
+const sidebarCollapsed = ref(false); // 左侧悬浮面板收起态（Tab 切换）
 
 // 速览时显示哪张图：peek=0 → 当前 (学生,题号) 的首张；否则在该生全部页里偏移
 const shownImage = computed(() => {
@@ -190,7 +199,7 @@ async function applyEffect(eff: GradeEffect) {
 function onKey(e: KeyboardEvent) {
   if (commentFocused.value) return; // 评语框获焦时打字，绝不能被当成判分键拦截
   if (e.ctrlKey || e.metaKey || e.altKey) return; // 让 OS 快捷键（Ctrl+R/F、devtools 等）通过，绝不误触发落分
-  if (e.key === "Tab") { e.preventDefault(); return; } // 别让 Tab 把焦点移进评语框/按钮而废掉判分键
+  if (e.key === "Tab") { e.preventDefault(); sidebarCollapsed.value = !sidebarCollapsed.value; return; } // Tab 收起/展开左侧面板（同时避免焦点移入评语框废掉判分键）
   const before = gs.value;
   const r = reduceGradeKey(gs.value, e.key, ctx.value);
   const handled = r.effect.kind !== "none"
@@ -238,6 +247,8 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
     </header>
     <n-alert v-if="errorMsg" type="error" :title="errorMsg" closable @close="errorMsg = ''" />
     <div class="pane">
+      <GradeSidebar :collapsed="sidebarCollapsed" :average="average" :dist="dist"
+                    @toggle="sidebarCollapsed = !sidebarCollapsed" />
       <div class="img" @wheel.prevent="onWheel" @mousedown="onImgDown" @mousemove="onImgMove"
            @mouseup="onImgUp" @mouseleave="onImgUp" @dblclick="resetZoom">
         <img v-if="imgUrl" :src="imgUrl" alt="答卷" draggable="false"
@@ -256,15 +267,6 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
         </ul>
         <p class="total">当前：{{ current.total ?? "—" }}｜{{ stateLabel(current.state) }}</p>
         <p v-if="gs.manual" class="manual">手动输入：{{ gs.buffer || "_" }}（Enter 确认）</p>
-        <div class="dist" v-if="dist.total">
-          <div class="dh">本题分布 · 已判 {{ dist.total }} 份</div>
-          <div class="bars">
-            <div v-for="(c, i) in dist.bins" :key="i" class="bar"
-                 :style="{ height: (c / dist.peak * 100) + '%' }"
-                 :title="`${binScore(i)} 分：${c} 人`"></div>
-          </div>
-          <div class="axis"><span>0</span><span>满分 {{ dist.max }}</span></div>
-        </div>
         <div class="comment">
           <label>评语</label>
           <textarea v-model="commentText" placeholder="本题评语（可选）"
@@ -277,6 +279,7 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
           <div><kbd>Enter</kbd> 下一份　<kbd>⌫ Backspace</kbd> 上一份</div>
           <div><kbd>←</kbd> <kbd>→</kbd> 速览邻页　<kbd>↓</kbd>/<kbd>Esc</kbd> 复位</div>
           <div><kbd>F</kbd> 存疑　<kbd>J</kbd> 下一存疑　<kbd>G</kbd> 总览</div>
+          <div><kbd>Tab</kbd> 收起/展开左侧分布面板</div>
           <div class="dim">滚轮缩放 · 拖拽平移 · 双击复位</div>
         </div>
       </aside>
@@ -323,7 +326,7 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
 .picker .prog .ung { color: #fb7; }
 .picker .jump { margin-left: 10px; background: #22303f; border: 1px solid #3a5570; color: #cfe3ff; padding: 2px 10px; cursor: pointer; font-family: inherit; }
 .picker .jump:disabled { opacity: 0.4; cursor: default; }
-.pane { flex: 1; display: flex; min-height: 0; }
+.pane { flex: 1; display: flex; min-height: 0; position: relative; }
 .img { flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; cursor: grab; }
 .img:active { cursor: grabbing; }
 .img img { max-width: 100%; max-height: 100%; transform-origin: center center; user-select: none; will-change: transform; }
@@ -336,11 +339,6 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
 .preset-list .pt { color: #9aa0a6; }
 .total { margin-top: 12px; font-size: 18px; }
 .manual { color: #7fd; }
-.dist { margin-top: 14px; }
-.dist .dh { font-size: 12px; color: #9aa0a6; margin-bottom: 4px; }
-.dist .bars { display: flex; align-items: flex-end; gap: 2px; height: 84px; border-bottom: 1px solid #333; }
-.dist .bar { flex: 1; background: #4f8cff; min-width: 3px; }
-.dist .axis { display: flex; justify-content: space-between; font-size: 11px; color: #888; margin-top: 2px; }
 .legend { margin-top: 16px; border-top: 1px solid #2a2d33; padding-top: 10px; font-size: 12px; line-height: 1.9; color: #b8bdc4; }
 .legend .lh { color: #9aa0a6; margin-bottom: 4px; }
 .legend .dim { color: #888; margin-top: 4px; }
