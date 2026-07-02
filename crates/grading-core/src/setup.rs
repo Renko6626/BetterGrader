@@ -7,15 +7,19 @@ pub fn create_exam(db: &Db, name: &str, date: &str) -> Result<i64> {
 }
 
 pub fn add_problem(db: &Db, exam_id: i64, number: i64, title: &str, max_score: i64) -> Result<i64> {
-    db.conn.execute(
+    // 全部插入在同一事务中：题目 + 三个自动档位 要么全部成功，要么全部回滚。
+    // 这些函数持 `&Db`（不可变），故用 unchecked_transaction()（作用于共享 &Connection）。
+    let tx = db.conn.unchecked_transaction()?;
+    tx.execute(
         "INSERT INTO problem(exam_id, number, title, max_score) VALUES(?1,?2,?3,?4)",
         (exam_id, number, title, max_score),
     )?;
-    let pid = db.conn.last_insert_rowid();
-    // 自动预置三个档位：满分/零分/空白
-    add_preset(db, pid, 7, "满分", max_score)?;
-    add_preset(db, pid, 8, "零分", 0)?;
-    add_preset(db, pid, 9, "空白", 0)?;
+    let pid = tx.last_insert_rowid();
+    // 自动预置三个档位：满分/零分/空白（内联进本事务，勿调 add_preset）
+    tx.execute("INSERT INTO score_preset(problem_id, slot, label, points) VALUES(?1,?2,?3,?4)", (pid, 7, "满分", max_score))?;
+    tx.execute("INSERT INTO score_preset(problem_id, slot, label, points) VALUES(?1,?2,?3,?4)", (pid, 8, "零分", 0))?;
+    tx.execute("INSERT INTO score_preset(problem_id, slot, label, points) VALUES(?1,?2,?3,?4)", (pid, 9, "空白", 0))?;
+    tx.commit()?;
     Ok(pid)
 }
 
@@ -46,12 +50,15 @@ pub fn list_presets(db: &Db, problem_id: i64) -> Result<Vec<Preset>> {
 }
 
 pub fn import_roster(db: &Db, exam_id: i64, rows: &[RosterRow]) -> Result<usize> {
+    // 整份花名册在同一事务：任一行失败则全部回滚，不留半份导入。
+    let tx = db.conn.unchecked_transaction()?;
     for (i, row) in rows.iter().enumerate() {
-        db.conn.execute(
+        tx.execute(
             "INSERT INTO student(exam_id, name, exam_number, roster_order) VALUES(?1,?2,?3,?4)",
             (exam_id, &row.name, &row.exam_number, i as i64),
         )?;
     }
+    tx.commit()?;
     Ok(rows.len())
 }
 
