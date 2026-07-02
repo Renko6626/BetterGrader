@@ -186,6 +186,15 @@ function onKey(e: KeyboardEvent) {
 function jumpFromOverview(i: number) {
   applyEffect({ kind: "jump", index: i });
 }
+// 快速定位：从当前往后（循环）跳到下一个未判
+function jumpToNextUngraded() {
+  const n = queue.value.length;
+  if (!n) return;
+  for (let k = 1; k <= n; k++) {
+    const i = (gs.value.index + k) % n;
+    if (queue.value[i].state === "Ungraded") { applyEffect({ kind: "jump", index: i }); return; }
+  }
+}
 
 // 速览偏移/换单元时 shownImage 变化 → 刷新真图（换题时 loadQueue 已显式刷新一次）
 watch(shownImage, () => { refreshImg(); });
@@ -201,9 +210,14 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
 <template>
   <section class="grade" v-if="current">
     <header class="picker">
-      题目：
-      <button v-for="p in problems" :key="p.id" :class="{ on: p.number === problemNumber }"
-              @click="onSelectProblem(p.number)">题{{ p.number }}</button>
+      <span class="tabs">题目：
+        <button v-for="p in problems" :key="p.id" :class="{ on: p.number === problemNumber }"
+                @click="onSelectProblem(p.number)">题{{ p.number }}</button>
+      </span>
+      <span class="prog">
+        本题 已判 <b>{{ counts.graded }}</b> · 存疑 {{ counts.flagged }} · 未判 <b class="ung">{{ counts.ungraded }}</b> / 共 {{ queue.length }}
+        <button class="jump" :disabled="!counts.ungraded" @click="jumpToNextUngraded">下一个未判 →</button>
+      </span>
     </header>
     <n-alert v-if="errorMsg" type="error" :title="errorMsg" closable @close="errorMsg = ''" />
     <div class="pane">
@@ -262,9 +276,10 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
   </section>
   <section v-else class="grade">
     <header class="picker">
-      题目：
-      <button v-for="p in problems" :key="p.id" :class="{ on: p.number === problemNumber }"
-              @click="onSelectProblem(p.number)">题{{ p.number }}</button>
+      <span class="tabs">题目：
+        <button v-for="p in problems" :key="p.id" :class="{ on: p.number === problemNumber }"
+                @click="onSelectProblem(p.number)">题{{ p.number }}</button>
+      </span>
     </header>
     <n-alert v-if="errorMsg" type="error" :title="errorMsg" closable @close="errorMsg = ''" />
     <p v-if="!problems.length">本场还没设置题目——先到"考试设置"用"生成题目"（填题数 + 每题满分）建题，才能判分。</p>
@@ -274,9 +289,14 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
 
 <style scoped>
 .grade { height: 100%; display: flex; flex-direction: column; font-family: ui-monospace, monospace; color: #d0d0d0; background: #14161a; }
-.picker { border-bottom: 1px solid #333; padding: 8px 12px; font-size: 13px; }
-.picker button { background: none; border: 1px solid #444; color: #d0d0d0; padding: 2px 10px; margin-left: 6px; cursor: pointer; font-family: inherit; }
-.picker button.on { border-color: #7fd; color: #7fd; }
+.picker { border-bottom: 1px solid #333; padding: 8px 12px; font-size: 13px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.picker .tabs button { background: none; border: 1px solid #444; color: #d0d0d0; padding: 2px 10px; margin-left: 6px; cursor: pointer; font-family: inherit; }
+.picker .tabs button.on { border-color: #7fd; color: #7fd; }
+.picker .prog { color: #b8bdc4; white-space: nowrap; }
+.picker .prog b { color: #e6e6e6; }
+.picker .prog .ung { color: #fb7; }
+.picker .jump { margin-left: 10px; background: #22303f; border: 1px solid #3a5570; color: #cfe3ff; padding: 2px 10px; cursor: pointer; font-family: inherit; }
+.picker .jump:disabled { opacity: 0.4; cursor: default; }
 .pane { flex: 1; display: flex; min-height: 0; }
 .img { flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; cursor: grab; }
 .img:active { cursor: grabbing; }

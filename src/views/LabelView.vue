@@ -1,7 +1,7 @@
 <!-- src/views/LabelView.vue -->
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from "vue";
-import { listPages, setPageLabel, labelingSummary, listStudents, addStudent } from "../api";
+import { listPages, setPageLabel, labelingSummary, listStudents, addStudent, shiftStudentProblems } from "../api";
 import type { PageRow, LabelSummary, Student } from "../types";
 import { useImage } from "../composables/useImage";
 import { initialLabelState, reduceLabelKey, pickStudent, type LabelState, type LabelEffect } from "../composables/useLabelKeys";
@@ -82,6 +82,15 @@ async function refreshSummary() {
   } catch (e) {
     errorMsg.value = String(e);
   }
+}
+// 整叠题号 ±1 平移（治无姓名页/多扫一张导致的整叠错位）
+async function doShiftStack(studentId: number, delta: number) {
+  errorMsg.value = "";
+  try {
+    await shiftStudentProblems(studentId, delta);
+    await reload();
+    await refreshSummary();
+  } catch (e) { errorMsg.value = String(e); }
 }
 
 async function applyEffect(eff: LabelEffect, targetPage: PageRow | null) {
@@ -177,14 +186,19 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
       <div v-if="summary" class="summary">
         <h3>确认总表（未标注 {{ summary.unlabeled_pages }} 张）</h3>
         <table>
-          <thead><tr><th>学生</th><th>答题页</th><th>题数N</th><th>校验</th></tr></thead>
+          <thead><tr><th>学生</th><th>答题页</th><th>题数N</th><th>校验</th><th>整叠题号</th></tr></thead>
           <tbody>
             <tr v-for="st in summary.stacks" :key="st.student_id" :class="{ bad: !st.count_ok }">
               <td>{{ st.student_name }}</td><td>{{ st.answer_pages }}</td><td>{{ st.problem_count }}</td>
-              <td>{{ st.count_ok ? "✓" : "✗ 页数不符，逐页指认" }}</td>
+              <td>{{ st.count_ok ? "✓" : "✗ 页数不符，逐页指认或整叠平移" }}</td>
+              <td>
+                <n-button size="tiny" @click="doShiftStack(st.student_id, 1)">题号+1</n-button>
+                <n-button size="tiny" @click="doShiftStack(st.student_id, -1)" style="margin-left:4px">-1</n-button>
+              </td>
             </tr>
           </tbody>
         </table>
+        <p class="hint2">无姓名页→整叠"题号+1"（把被当成姓名页的首页拨回题1）；多扫一张→"-1"。</p>
         <p v-if="summary.absent_students.length" class="absent">
           缺考（花名册有、无卷）：{{ summary.absent_students.map(s => s.name).join("、") }}
         </p>
@@ -218,4 +232,5 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
 .summary th, .summary td { border: 1px solid #444; padding: 2px 10px; }
 .summary tr.bad td { color: #f77; }
 .summary .absent { color: #fb7; }
+.summary .hint2 { color: #9aa0a6; font-size: 12px; margin-top: 4px; }
 </style>

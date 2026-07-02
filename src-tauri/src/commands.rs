@@ -93,6 +93,16 @@ pub fn delete_problem(state: tauri::State<AppState>, problem_id: i64) -> R<()> {
     })
 }
 #[tauri::command]
+pub fn shift_student_problems(state: tauri::State<AppState>, student_id: i64, delta: i64) -> R<()> {
+    // 把该生所有已标注页的题号整体平移（治"无姓名页/多扫一张"导致整叠错位）
+    with_exam(&state, |oe| {
+        oe.db.conn.execute(
+            "UPDATE page SET problem_number = problem_number + ?2 WHERE student_id=?1 AND problem_number IS NOT NULL",
+            (student_id, delta))?;
+        Ok(())
+    })
+}
+#[tauri::command]
 pub fn set_problem_max(state: tauri::State<AppState>, problem_id: i64, max_score: i64) -> R<()> {
     with_exam(&state, |oe| {
         oe.db.conn.execute("UPDATE problem SET max_score=?2 WHERE id=?1", (problem_id, max_score))?;

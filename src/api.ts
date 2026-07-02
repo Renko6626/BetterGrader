@@ -18,6 +18,8 @@ export const addPreset = (problemId: number, slot: number, label: string, points
 export const deleteProblem = (problemId: number) => invoke<void>("delete_problem", { problemId });
 export const setProblemMax = (problemId: number, maxScore: number) =>
   invoke<void>("set_problem_max", { problemId, maxScore });
+export const shiftStudentProblems = (studentId: number, delta: number) =>
+  invoke<void>("shift_student_problems", { studentId, delta });
 export const buildQueue = (problemNumber: number) => invoke<GradingUnit[]>("build_queue", { problemNumber });
 export const setScore = (studentId: number, problemId: number, total: number | null,
                          presetId: number | null, stateStr: ScoreState) =>
