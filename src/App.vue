@@ -3,7 +3,8 @@ import { ref } from "vue";
 import { NConfigProvider, darkTheme } from "naive-ui";
 import SetupView from "./views/SetupView.vue";
 import GradeView from "./views/GradeView.vue";
-const route = ref<"setup" | "grade">("setup");
+import ExportView from "./views/ExportView.vue";
+const route = ref<"setup" | "grade" | "export">("setup");
 </script>
 
 <template>
@@ -11,12 +12,21 @@ const route = ref<"setup" | "grade">("setup");
     <nav>
       <button @click="route = 'setup'">考试设置</button>
       <button @click="route = 'grade'">判分</button>
+      <button @click="route = 'export'">导出</button>
     </nav>
     <SetupView v-if="route === 'setup'" />
-    <GradeView v-else />
+    <GradeView v-else-if="route === 'grade'" />
+    <ExportView v-else-if="route === 'export'" />
   </n-config-provider>
 </template>
 
 <style>
 .app-shell { display: block; min-height: 100vh; background: #101010; }
+</style>
+
+<style scoped>
+@media print {
+  .app-shell { background: #fff !important; }
+  nav { display: none !important; }
+}
 </style>
