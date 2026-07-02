@@ -47,13 +47,13 @@ async function refreshSummary() {
   }
 }
 
-async function applyEffect(eff: LabelEffect) {
-  if (eff.kind === "assign" && cur.value) {
-    const page = cur.value;
+async function applyEffect(eff: LabelEffect, targetPage: PageRow | null) {
+  errorMsg.value = ""; // 每次尝试先清掉旧的失败横幅
+  if (eff.kind === "assign" && targetPage) {
     try {
-      await setPageLabel(page.id, eff.studentId, eff.problemNumber);
+      await setPageLabel(targetPage.id, eff.studentId, eff.problemNumber);
       // 本地同步，避免整列重查
-      page.student_id = eff.studentId; page.problem_number = eff.problemNumber; page.status = "labeled";
+      targetPage.student_id = eff.studentId; targetPage.problem_number = eff.problemNumber; targetPage.status = "labeled";
     } catch (e) {
       errorMsg.value = String(e);
     }
@@ -63,22 +63,23 @@ async function applyEffect(eff: LabelEffect) {
 async function onKey(e: KeyboardEvent) {
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   if (ls.value.picker) return; // 选人态交给 NModal 输入，不进 reducer
-  const before = ls.value;
-  const r = reduceLabelKey(before, e.key, ctx.value);
-  const handled = r.effect.kind !== "none" || JSON.stringify(r.state) !== JSON.stringify(before);
+  const before = ls.value.index;
+  const targetPage = cur.value; // 落库目标必须是按键时屏幕上的页——在 ls.value 前进前捕获
+  const r = reduceLabelKey(ls.value, e.key, ctx.value);
+  const handled = r.effect.kind !== "none" || JSON.stringify(r.state) !== JSON.stringify(ls.value);
   ls.value = r.state;
   if (handled) e.preventDefault(); // 只吞掉 reducer 真正消费的键
-  await applyEffect(r.effect);
-  if (r.state.index !== before.index) await refreshImage();
+  await applyEffect(r.effect, targetPage);
+  if (ls.value.index !== before) await refreshImage();
 }
 
 async function confirmPick(studentId: number) {
-  const before = ls.value;
-  const r = pickStudent(before, studentId, ctx.value);
+  const targetPage = cur.value; // 当前正在看的姓名页——在 ls.value 前进前捕获
+  const r = pickStudent(ls.value, studentId, ctx.value);
   ls.value = r.state;
   pickQuery.value = "";
-  await applyEffect(r.effect);
-  if (r.state.index !== before.index) await refreshImage();
+  await applyEffect(r.effect, targetPage);
+  await refreshImage();
 }
 async function addAndPick() {
   const name = pickQuery.value.trim();
@@ -117,7 +118,7 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
       </div>
 
       <!-- 花名册选人 -->
-      <n-modal v-model:show="ls.picker" :close-on-esc="false" preset="card" title="选人（搜姓名/键考号）" style="width:420px">
+      <n-modal v-model:show="ls.picker" :close-on-esc="true" preset="card" title="选人（搜姓名/键考号）" style="width:420px">
         <n-input v-model:value="pickQuery" placeholder="姓名或考号" autofocus @keyup.enter="filteredStudents[0] && confirmPick(filteredStudents[0].id)" />
         <ul class="picklist">
           <li v-for="s in filteredStudents" :key="s.id" @click="confirmPick(s.id)">{{ s.name }}（{{ s.exam_number ?? "—" }}）</li>
