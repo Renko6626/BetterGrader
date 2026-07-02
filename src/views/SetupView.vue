@@ -7,6 +7,7 @@ import {
 } from "../api";
 import type { Problem, Preset, Student, ExamInfo } from "../types";
 import { NButton, NCard, NDataTable, NAlert, NSpace, NTag } from "naive-ui";
+import type { DataTableColumns } from "naive-ui";
 import { usePdf } from "../composables/usePdf";
 
 const { renderToPngs } = usePdf();
@@ -59,20 +60,24 @@ async function doImportPdfs() {
     if (typeof dir !== "string") return;
     importing.value = true;
     const pdfs = await listPdfs(dir);
-    let done = 0;
+    let done = 0; const failed: string[] = [];
     for (const name of pdfs) {
-      const studentName = name.replace(/\.pdf$/i, "");
-      const sid = await addStudent(studentName, null);
-      const bytes = new Uint8Array(await readPdf(dir, name));
-      const pngs = await renderToPngs(bytes);
-      for (let idx = 0; idx < pngs.length; idx++) {
-        // page_index 0 = 姓名页(题0)，idx = 题号；problem_number = idx
-        await savePdfPage(sid, idx, `${sid}_${idx}.png`, Array.from(pngs[idx]));
-      }
-      done++;
-      pdfMsg.value = `已导入 ${done}/${pdfs.length} 份 PDF…`;
+      try {
+        const studentName = name.replace(/\.pdf$/i, "").trim() || name;
+        const bytes = new Uint8Array(await readPdf(dir, name));
+        const pngs = await renderToPngs(bytes);           // 渲染在前：坏 PDF 在这里失败，不会先建学生
+        const sid = await addStudent(studentName, null);
+        for (let idx = 0; idx < pngs.length; idx++) {
+          // page_index 0 = 姓名页(题0)，idx = 题号；problem_number = idx
+          await savePdfPage(sid, idx, `${sid}_${idx}.png`, Array.from(pngs[idx]));
+        }
+        done++;
+      } catch { failed.push(name); }
+      pdfMsg.value = `已导入 ${done}/${pdfs.length}…`;
     }
-    pdfMsg.value = `完成：导入 ${done} 份 PDF（去"判分"直接开批；页数不符的在"标注"确认总表里修）`;
+    pdfMsg.value = failed.length
+      ? `完成：导入 ${done} 份；失败 ${failed.length} 份（${failed.join("、")}）——可重试这些文件`
+      : `完成：导入 ${done} 份 PDF（去"判分"直接开批；页数不符的在"标注"确认总表里修）`;
     await refresh();
   } catch (e) { errorMsg.value = String(e); } finally { importing.value = false; }
 }
@@ -91,12 +96,12 @@ async function doDelete(sid: number) {
     catch (e) { errorMsg.value = String(e); }
   }
 }
-const studentColumns = [
+const studentColumns: DataTableColumns<Student> = [
   { title: "姓名", key: "name" },
-  { title: "考号", key: "exam_number", render: (row: Student) => row.exam_number ?? "—" },
+  { title: "考号", key: "exam_number", render: (row) => row.exam_number ?? "—" },
   {
     title: "操作", key: "actions",
-    render: (row: Student) =>
+    render: (row) =>
       h(NSpace, null, () => [
         h(NButton, { size: "tiny", onClick: () => doRename(row.id, row.name) }, () => "改名"),
         h(NButton, { size: "tiny", type: "error", onClick: () => doDelete(row.id) }, () => "删除"),
