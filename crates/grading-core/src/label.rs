@@ -52,6 +52,14 @@ pub fn labeling_summary(db: &Db, exam_id: i64) -> Result<LabelSummary> {
     Ok(LabelSummary { stacks, absent_students, unlabeled_pages })
 }
 
+pub fn add_labeled_page(db: &Db, exam_id: i64, student_id: i64, problem_number: i64, filename: &str, seq: i64) -> Result<i64> {
+    db.conn.execute(
+        "INSERT INTO page(exam_id, student_id, problem_number, image_path, seq, status)
+         VALUES(?1, ?2, ?3, ?4, ?5, 'labeled')",
+        (exam_id, student_id, problem_number, filename, seq))?;
+    Ok(db.conn.last_insert_rowid())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -120,5 +128,21 @@ mod tests {
         assert_eq!(sum.absent_students.len(), 1);                 // 仅丙 缺考
         assert_eq!(sum.absent_students[0].name, "丙");
         assert_eq!(sum.unlabeled_pages, 1);
+    }
+
+    #[test]
+    fn add_labeled_page_inserts_labeled_row() {
+        use crate::setup::create_exam;
+        let db = Db::open_in_memory().unwrap();
+        let exam = create_exam(&db, "E", "2026-07-03").unwrap();
+        let sid = add_student(&db, exam, "张三", None).unwrap();
+        let id = add_labeled_page(&db, exam, sid, 0, "s_0.png", 0).unwrap(); // 姓名页
+        add_labeled_page(&db, exam, sid, 1, "s_1.png", 1).unwrap();          // 第1题
+        let pages = list_pages(&db, exam).unwrap();
+        assert_eq!(pages.len(), 2);
+        assert_eq!((pages[0].student_id, pages[0].problem_number, pages[0].status.as_str()),
+                   (Some(sid), Some(0), "labeled"));
+        assert_eq!(pages[1].problem_number, Some(1));
+        let _ = id;
     }
 }
