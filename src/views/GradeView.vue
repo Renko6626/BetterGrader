@@ -22,12 +22,44 @@ const { url: imgUrl, show: showImg } = useImage();
 const commentText = ref("");            // 当前单元评语（textarea 绑定）
 const commentFocused = ref(false);      // 获焦时 onKey 必须放行，不当判分键处理
 
+// 卷面缩放/平移（滚轮缩放、拖拽平移、双击复位）
+const zoom = ref(1);
+const panX = ref(0);
+const panY = ref(0);
+let dragging = false, lastX = 0, lastY = 0;
+function onWheel(e: WheelEvent) {
+  const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
+  zoom.value = Math.min(8, Math.max(0.3, zoom.value * factor));
+}
+function onImgDown(e: MouseEvent) { dragging = true; lastX = e.clientX; lastY = e.clientY; }
+function onImgMove(e: MouseEvent) {
+  if (!dragging) return;
+  panX.value += e.clientX - lastX; panY.value += e.clientY - lastY;
+  lastX = e.clientX; lastY = e.clientY;
+}
+function onImgUp() { dragging = false; }
+function resetZoom() { zoom.value = 1; panX.value = 0; panY.value = 0; }
+
 const current = computed(() => queue.value[gs.value.index]);
 const ctx = computed<GradeCtx>(() => ({
   queueLength: queue.value.length,
   peekMin: -(Math.max(peekPages.value.length - 1, 0)),
   peekMax: Math.max(peekPages.value.length - 1, 0),
 }));
+// 本题满分（面板标题用）与三态本地化
+const curMax = computed(() => problems.value.find(p => p.number === problemNumber.value)?.max_score ?? "");
+const stateLabel = (s: string) =>
+  (({ Graded: "已判", Flagged: "存疑", Ungraded: "未判", Absent: "缺考" } as Record<string, string>)[s] ?? s);
+// 本题进度计数
+const counts = computed(() => {
+  const c = { graded: 0, flagged: 0, ungraded: 0 };
+  for (const u of queue.value) {
+    if (u.state === "Graded") c.graded++;
+    else if (u.state === "Flagged") c.flagged++;
+    else c.ungraded++;
+  }
+  return c;
+});
 
 // 速览时显示哪张图：peek=0 → 当前 (学生,题号) 的首张；否则在该生全部页里偏移
 const shownImage = computed(() => {
@@ -55,7 +87,7 @@ async function loadQueue() {
     presets.value = current.value ? await listPresets(current.value.problem_id) : [];
     await refreshPeek();
     await refreshImg();
-    syncComment();
+    syncComment(); resetZoom();
   } catch (e) {
     errorMsg.value = String(e); // 未 seed 时 buildQueue 会拒绝，优雅降级为横幅+"队列为空"
   }
@@ -119,17 +151,17 @@ async function applyEffect(eff: GradeEffect) {
       case "advance": case "back":
         presets.value = await listPresets(current.value!.problem_id);
         await refreshPeek();
-        syncComment();
+        syncComment(); resetZoom();
         break;
       case "nextFlag": {
         const next = queue.value.findIndex((x, i) => i > gs.value.index && x.state === "Flagged");
-        if (next >= 0) { gs.value = { ...gs.value, index: next, peek: 0, manual: false, buffer: "" }; await refreshPeek(); syncComment(); }
+        if (next >= 0) { gs.value = { ...gs.value, index: next, peek: 0, manual: false, buffer: "" }; await refreshPeek(); syncComment(); resetZoom(); }
         break;
       }
       case "jump":
         gs.value = { ...gs.value, index: eff.index, peek: 0, manual: false, buffer: "", overview: false };
         await refreshPeek();
-        syncComment();
+        syncComment(); resetZoom();
         break;
       case "none": break;
     }
@@ -141,6 +173,7 @@ async function applyEffect(eff: GradeEffect) {
 function onKey(e: KeyboardEvent) {
   if (commentFocused.value) return; // 评语框获焦时打字，绝不能被当成判分键拦截
   if (e.ctrlKey || e.metaKey || e.altKey) return; // 让 OS 快捷键（Ctrl+R/F、devtools 等）通过，绝不误触发落分
+  if (e.key === "Tab") { e.preventDefault(); return; } // 别让 Tab 把焦点移进评语框/按钮而废掉判分键
   const before = gs.value;
   const r = reduceGradeKey(gs.value, e.key, ctx.value);
   const handled = r.effect.kind !== "none"
@@ -174,8 +207,10 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
     </header>
     <n-alert v-if="errorMsg" type="error" :title="errorMsg" closable @close="errorMsg = ''" />
     <div class="pane">
-      <div class="img">
-        <img v-if="imgUrl" :src="imgUrl" alt="答卷" />
+      <div class="img" @wheel.prevent="onWheel" @mousedown="onImgDown" @mousemove="onImgMove"
+           @mouseup="onImgUp" @mouseleave="onImgUp" @dblclick="resetZoom">
+        <img v-if="imgUrl" :src="imgUrl" alt="答卷" draggable="false"
+             :style="{ transform: `translate(${panX}px,${panY}px) scale(${zoom})` }" />
         <div v-else class="placeholder">
           <div>占位图（无真实扫描）</div>
           <div>{{ current.student_name }} · 题{{ problemNumber }}
@@ -184,13 +219,11 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
         </div>
       </div>
       <aside class="panel">
-        <h3>题{{ current.problem_number }}</h3>
-        <ul>
-          <li v-for="p in presets" :key="p.id">
-            <b>{{ p.slot }}</b> {{ p.label }} {{ p.points }}
-          </li>
+        <h3>题{{ current.problem_number }}<span v-if="curMax !== ''" class="mx">满分 {{ curMax }}</span></h3>
+        <ul class="preset-list">
+          <li v-for="p in presets" :key="p.id"><b>{{ p.slot }}</b> {{ p.label }} <span class="pt">{{ p.points }}</span></li>
         </ul>
-        <p class="total">当前：{{ current.total ?? "—" }}｜{{ current.state }}</p>
+        <p class="total">当前：{{ current.total ?? "—" }}｜{{ stateLabel(current.state) }}</p>
         <p v-if="gs.manual" class="manual">手动输入：{{ gs.buffer || "_" }}（Enter 确认）</p>
         <div class="comment">
           <label>评语</label>
@@ -198,11 +231,19 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
             @focus="commentFocused = true"
             @blur="commentFocused = false; saveCurrentComment()"></textarea>
         </div>
+        <div class="legend">
+          <div class="lh">快捷键</div>
+          <div><kbd>1–9</kbd> 档位给分　<kbd>M</kbd>/<kbd>0</kbd> 手动</div>
+          <div><kbd>Enter</kbd> 下一份　<kbd>⌫ Backspace</kbd> 上一份</div>
+          <div><kbd>←</kbd> <kbd>→</kbd> 速览邻页　<kbd>↓</kbd>/<kbd>Esc</kbd> 复位</div>
+          <div><kbd>F</kbd> 存疑　<kbd>J</kbd> 下一存疑　<kbd>G</kbd> 总览</div>
+          <div class="dim">滚轮缩放 · 拖拽平移 · 双击复位</div>
+        </div>
       </aside>
     </div>
     <footer>
       本题进度 {{ gs.index + 1 }} / {{ queue.length }}
-      ｜[F]存疑 [J]下一存疑 [G]总览 [M/0]手动 [←/→]速览
+      ｜已判 {{ counts.graded }} · 存疑 {{ counts.flagged }} · 未判 {{ counts.ungraded }}
     </footer>
 
     <!-- 队列总览（G 打开） -->
@@ -236,14 +277,23 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
 .picker { border-bottom: 1px solid #333; padding: 8px 12px; font-size: 13px; }
 .picker button { background: none; border: 1px solid #444; color: #d0d0d0; padding: 2px 10px; margin-left: 6px; cursor: pointer; font-family: inherit; }
 .picker button.on { border-color: #7fd; color: #7fd; }
-.pane { flex: 1; display: flex; }
-.img { flex: 1; display: flex; align-items: center; justify-content: center; }
-.img img { max-width: 100%; max-height: 100%; }
+.pane { flex: 1; display: flex; min-height: 0; }
+.img { flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; cursor: grab; }
+.img:active { cursor: grabbing; }
+.img img { max-width: 100%; max-height: 100%; transform-origin: center center; user-select: none; will-change: transform; }
 .placeholder { border: 1px dashed #555; padding: 40px; text-align: center; color: #888; }
-.panel { width: 260px; border-left: 1px solid #333; padding: 12px; }
-.panel li { list-style: none; margin: 2px 0; }
+.panel { width: 260px; border-left: 1px solid #333; padding: 12px; overflow: auto; }
+.panel h3 .mx { color: #9aa0a6; font-size: 12px; font-weight: normal; margin-left: 8px; }
+.preset-list { list-style: none; padding: 0; margin: 6px 0; }
+.preset-list li { margin: 2px 0; }
+.preset-list b { display: inline-block; width: 1.4em; color: #7fd; }
+.preset-list .pt { color: #9aa0a6; }
 .total { margin-top: 12px; font-size: 18px; }
 .manual { color: #7fd; }
+.legend { margin-top: 16px; border-top: 1px solid #2a2d33; padding-top: 10px; font-size: 12px; line-height: 1.9; color: #b8bdc4; }
+.legend .lh { color: #9aa0a6; margin-bottom: 4px; }
+.legend .dim { color: #888; margin-top: 4px; }
+.legend kbd { background: #22262c; border: 1px solid #3a3f47; border-radius: 3px; padding: 0 5px; font-family: inherit; font-size: 11px; color: #e6e6e6; }
 .comment { margin-top: 16px; display: flex; flex-direction: column; gap: 4px; }
 .comment label { font-size: 12px; color: #888; }
 .comment textarea {
