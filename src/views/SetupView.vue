@@ -44,7 +44,7 @@ onMounted(refresh);
       <n-button type="primary" @click="doDemo">新建演示考试…</n-button>
     </n-space>
     <n-alert v-if="errorMsg" type="error" :title="errorMsg" closable @close="errorMsg=''" style="margin-top:8px" />
-    <p v-if="exam">当前：{{ exam.name }}（exam_id={{ exam.id }}）</p>
+    <p v-if="exam">当前：{{ exam.name }}</p>
     <p v-else>未打开考试。点上面按钮选一个目录。</p>
 
     <div v-for="p in problems" :key="p.id" style="margin:8px 0;">
