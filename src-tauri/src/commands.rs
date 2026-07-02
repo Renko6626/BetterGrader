@@ -92,6 +92,15 @@ pub fn delete_problem(state: tauri::State<AppState>, problem_id: i64) -> R<()> {
         Ok(())
     })
 }
+#[tauri::command]
+pub fn set_problem_max(state: tauri::State<AppState>, problem_id: i64, max_score: i64) -> R<()> {
+    with_exam(&state, |oe| {
+        oe.db.conn.execute("UPDATE problem SET max_score=?2 WHERE id=?1", (problem_id, max_score))?;
+        // "满分"档位跟随满分变化，保证一键给满分仍等于满分
+        oe.db.conn.execute("UPDATE score_preset SET points=?2 WHERE problem_id=?1 AND label='满分'", (problem_id, max_score))?;
+        Ok(())
+    })
+}
 #[tauri::command] pub fn build_queue(state: tauri::State<AppState>, problem_number: i64) -> R<Vec<GradingUnit>> { with_exam(&state, |oe| grading::build_queue(&oe.db, oe.exam_id, problem_number)) }
 #[tauri::command] pub fn student_pages(state: tauri::State<AppState>, student_id: i64) -> R<Vec<PageRef>> { with_exam(&state, |oe| grading::student_pages(&oe.db, student_id)) }
 

@@ -46,7 +46,9 @@ const route = ref<"setup" | "label" | "grade" | "export">("setup");
 }
 .topnav button:hover { color: #e6e6e6; }
 .topnav button.on { color: #fff; border-bottom-color: #4f8cff; }
-.app-main { flex: 1 1 auto; min-height: 0; overflow: auto; }
+/* 全局浅色文字：裸 <h3>/<p>/<li>/<label> 等继承此色，避免暗背景上默认黑字看不清
+   （naive-ui 暗色主题只作用于其自身组件，不管原生元素）。打印时各视图 @media print 会覆盖为黑字。 */
+.app-main { flex: 1 1 auto; min-height: 0; overflow: auto; color: #d8d8d8; }
 @media print {
   .app-shell { background: #fff !important; }
   .topnav { display: none !important; }
