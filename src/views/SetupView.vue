@@ -1,80 +1,60 @@
 <script setup lang="ts">
-import { ref, h } from "vue";
-import { NSpace, NButton, NCard, NTag, NText, NAlert, NDataTable } from "naive-ui";
-import type { DataTableColumns } from "naive-ui";
-import { seedFake, listProblems, listPresets, listStudents } from "../api";
-import type { Problem, Preset, Student } from "../types";
+import { ref, onMounted } from "vue";
+import { open } from "@tauri-apps/plugin-dialog";
+import { newExam, openExam, seedDemoExam, currentExam, listProblems, listPresets, listStudents } from "../api";
+import type { Problem, Preset, Student, ExamInfo } from "../types";
+import { NButton, NCard, NDataTable, NAlert, NSpace, NTag } from "naive-ui";
 
-const examId = ref<number | null>(null);
+const exam = ref<ExamInfo | null>(null);
 const problems = ref<Problem[]>([]);
 const presetsByProblem = ref<Record<number, Preset[]>>({});
 const students = ref<Student[]>([]);
-const loading = ref(false);
-const errorMsg = ref<string | null>(null);
+const errorMsg = ref("");
 
-const presetColumns: DataTableColumns<Preset> = [
-  { title: "键", key: "slot", width: 80 },
-  { title: "档位", key: "label" },
-  { title: "分值", key: "points", width: 100, render: (row) => h("span", `${row.points} 分`) },
-];
-
-const studentColumns: DataTableColumns<Student> = [
-  { title: "序号", key: "roster_order", width: 80, render: (row) => row.roster_order ?? "—" },
-  { title: "姓名", key: "name" },
-  { title: "考号", key: "exam_number", render: (row) => row.exam_number ?? "—" },
-];
-
-async function seed() {
-  loading.value = true;
-  errorMsg.value = null;
-  examId.value = null;
-  problems.value = [];
-  presetsByProblem.value = {};
-  students.value = [];
-  try {
-    examId.value = await seedFake();
-    problems.value = await listProblems(examId.value);
-    const nextPresets: Record<number, Preset[]> = {};
-    for (const p of problems.value) nextPresets[p.id] = await listPresets(p.id);
-    presetsByProblem.value = nextPresets;
-    students.value = await listStudents(examId.value);
-  } catch (err) {
-    errorMsg.value = err instanceof Error ? err.message : String(err);
-  } finally {
-    loading.value = false;
-  }
+async function refresh() {
+  exam.value = await currentExam();
+  if (!exam.value) { problems.value = []; students.value = []; presetsByProblem.value = {}; return; }
+  problems.value = await listProblems();
+  const np: Record<number, Preset[]> = {};
+  for (const p of problems.value) np[p.id] = await listPresets(p.id);
+  presetsByProblem.value = np;
+  students.value = await listStudents();
 }
+
+async function pickDir(): Promise<string | null> {
+  const d = await open({ directory: true, multiple: false, title: "选择考试目录" });
+  return typeof d === "string" ? d : null;
+}
+async function doNew()  { await withDir(newExam); }
+async function doOpen() { await withDir(openExam); }
+async function doDemo() { await withDir(seedDemoExam); }
+async function withDir(fn: (dir: string) => Promise<number>) {
+  errorMsg.value = "";
+  try { const dir = await pickDir(); if (!dir) return; await fn(dir); await refresh(); }
+  catch (e) { errorMsg.value = String(e); }
+}
+onMounted(refresh);
 </script>
 
 <template>
-  <n-space vertical size="large" class="setup">
-    <n-space align="center">
-      <n-button type="primary" :loading="loading" @click="seed">载入假考试（M1 验收数据）</n-button>
-      <n-text v-if="examId !== null" depth="3">exam_id = {{ examId }}（判分视图会用这场）</n-text>
+  <section style="padding:16px; font-family:ui-monospace,monospace;">
+    <n-space>
+      <n-button @click="doNew">新建考试…</n-button>
+      <n-button @click="doOpen">打开考试…</n-button>
+      <n-button type="primary" @click="doDemo">新建演示考试…</n-button>
     </n-space>
+    <n-alert v-if="errorMsg" type="error" :title="errorMsg" closable @close="errorMsg=''" style="margin-top:8px" />
+    <p v-if="exam">当前：{{ exam.name }}（exam_id={{ exam.id }}）</p>
+    <p v-else>未打开考试。点上面按钮选一个目录。</p>
 
-    <n-alert v-if="errorMsg" type="error" title="IPC 调用失败" closable @close="errorMsg = null">
-      {{ errorMsg }}
-    </n-alert>
-
-    <n-space vertical size="medium" v-if="problems.length" item-style="width: 100%">
-      <n-card v-for="p in problems" :key="p.id" size="small" :title="`题${p.number} · ${p.title}`">
-        <template #header-extra>
-          <n-tag type="info" size="small" round>满分 {{ p.max_score }}</n-tag>
-        </template>
-        <n-data-table :columns="presetColumns" :data="presetsByProblem[p.id] || []" :bordered="false" size="small" />
-      </n-card>
-    </n-space>
-
-    <n-card v-if="students.length" size="small" :title="`花名册（${students.length} 人）`">
-      <n-data-table :columns="studentColumns" :data="students" :bordered="false" size="small" />
+    <div v-for="p in problems" :key="p.id" style="margin:8px 0;">
+      <h3>题{{ p.number }} · {{ p.title }}
+        <n-tag size="small">满分 {{ p.max_score }}</n-tag>
+      </h3>
+      <ul><li v-for="pr in presetsByProblem[p.id]" :key="pr.id">键 {{ pr.slot }} → {{ pr.label }} = {{ pr.points }}</li></ul>
+    </div>
+    <n-card v-if="students.length" :title="`花名册（${students.length} 人）`">
+      <n-data-table :columns="[{title:'姓名',key:'name'},{title:'考号',key:'exam_number'}]" :data="students" />
     </n-card>
-  </n-space>
+  </section>
 </template>
-
-<style scoped>
-.setup {
-  padding: 16px;
-  font-family: ui-monospace, monospace;
-}
-</style>

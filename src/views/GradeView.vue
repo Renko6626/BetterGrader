@@ -8,8 +8,7 @@ import {
   type GradeState, type GradeCtx, type GradeEffect,
 } from "../composables/useGradeKeys";
 
-// M1：固定用 seed 出来的 exam_id=1、先批第 1 题（真实选题在后续计划）
-const examId = 1;
+// M1：先批第 1 题（真实选题在后续计划）；作用于当前打开的考试
 const problemNumber = ref(1);
 
 const queue = ref<GradingUnit[]>([]);
@@ -38,7 +37,7 @@ const isRealImage = (path: string | null) =>
 
 async function loadQueue() {
   try {
-    queue.value = await buildQueue(examId, problemNumber.value);
+    queue.value = await buildQueue(problemNumber.value);
     presets.value = current.value ? await listPresets(current.value.problem_id) : [];
     await refreshPeek();
   } catch (e) {
@@ -152,7 +151,7 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
       </div>
     </n-modal>
   </section>
-  <section v-else class="grade"><p>队列为空。先到"考试设置"点"载入假考试"。</p></section>
+  <section v-else class="grade"><p>队列为空。先到"考试设置"打开或新建一场考试。</p></section>
 </template>
 
 <style scoped>
