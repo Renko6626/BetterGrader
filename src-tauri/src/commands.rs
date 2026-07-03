@@ -143,6 +143,16 @@ pub fn save_csv(state: tauri::State<AppState>, path: String, include_comments: b
     std::fs::write(&path, bytes).map_err(e)
 }
 
+// 把前端拼好的每人 PDF 字节写进用户选的输出目录。dir 是对话框选的目录（可信），
+// filename 由前端从姓名/学号派生，仍过同一文件名护栏防越界。
+#[tauri::command]
+pub fn save_export_file(dir: String, filename: String, bytes: Vec<u8>) -> R<()> {
+    if filename.contains('/') || filename.contains('\\') || filename.contains("..") || filename.contains(':') {
+        return Err("非法文件名".into());
+    }
+    std::fs::write(std::path::Path::new(&dir).join(&filename), bytes).map_err(e)
+}
+
 #[tauri::command]
 pub fn ingest_folder(state: tauri::State<AppState>, src_dir: String) -> R<usize> {
     let guard = state.0.lock().map_err(e)?;

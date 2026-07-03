@@ -33,6 +33,8 @@ export const studentPages = (studentId: number) => invoke<PageRef[]>("student_pa
 export const exportSummary = () => invoke<ExportData>("export_summary");
 export const saveCsv = (path: string, includeComments: boolean) =>
   invoke<void>("save_csv", { path, includeComments });
+export const saveExportFile = (dir: string, filename: string, bytes: number[]) =>
+  invoke<void>("save_export_file", { dir, filename, bytes });
 
 // 扫描/理片
 export const ingestFolder = (srcDir: string) => invoke<number>("ingest_folder", { srcDir });

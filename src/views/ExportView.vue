@@ -1,9 +1,10 @@
 <!-- src/views/ExportView.vue -->
 <script setup lang="ts">
 import { ref } from "vue";
-import { save } from "@tauri-apps/plugin-dialog";
-import { exportSummary, saveCsv } from "../api";
-import type { ExportData } from "../types";
+import { save, open } from "@tauri-apps/plugin-dialog";
+import { PDFDocument } from "pdf-lib";
+import { exportSummary, saveCsv, listStudents, studentPages, readImage, saveExportFile } from "../api";
+import type { ExportData, Student } from "../types";
 import { NButton, NAlert, NSpace } from "naive-ui";
 
 const data = ref<ExportData | null>(null);
@@ -11,6 +12,9 @@ const errorMsg = ref("");
 const okMsg = ref("");
 const tried = ref(false); // 是否已尝试过计算（区分"从未点过"与"点过但无考试"）
 const includeComments = ref(false); // 导出 CSV 时是否含每题评语列
+const nameMode = ref<"name" | "number">("name"); // 每人 PDF 文件名取姓名还是学号
+const exporting = ref(false);
+const pdfMsg = ref("");
 
 async function load() {
   errorMsg.value = ""; okMsg.value = ""; tried.value = true;
@@ -28,6 +32,58 @@ async function doSaveCsv() {
   } catch (e) { errorMsg.value = String(e); }
 }
 function printReport() { window.print(); }
+
+// 文件名清洗：去掉 Windows/护栏非法字符与 .. 与尾部点/空格；空则兜底 unnamed
+function sanitizeName(raw: string): string {
+  const s = raw.replace(/[\\/:*?"<>|]/g, "_").replace(/\.\.+/g, "_").replace(/[\s.]+$/, "").trim();
+  return s || "unnamed";
+}
+// 选姓名/学号派生文件名主干；学号缺失回退姓名；重名自动加 _2/_3 后缀防覆盖
+function uniqueBase(s: Student, used: Set<string>): string {
+  const raw = nameMode.value === "number" ? (s.exam_number || s.name) : s.name;
+  const base = sanitizeName(raw);
+  let cand = base, i = 2;
+  while (used.has(cand.toLowerCase())) cand = `${base}_${i++}`;
+  used.add(cand.toLowerCase());
+  return cand;
+}
+
+// 把每个考生的图片按扫描序（含姓名页）拼成一份 PDF，写到用户选的目录。
+async function doExportPdfs() {
+  errorMsg.value = ""; okMsg.value = ""; pdfMsg.value = "";
+  const dir = await open({ directory: true, multiple: false, title: "选择 PDF 输出目录" });
+  if (typeof dir !== "string") return;
+  exporting.value = true;
+  try {
+    const students = await listStudents();
+    const used = new Set<string>();
+    let done = 0, skipped = 0;
+    const failed: string[] = [];
+    for (const s of students) {
+      // studentPages 按 seq 返回该生全部页（含姓名页 题0）；排除占位假图
+      const pages = (await studentPages(s.id)).filter(p => p.image_path && !p.image_path.startsWith("fake://"));
+      if (!pages.length) { skipped++; continue; } // 无卷（缺考）跳过
+      try {
+        const pdf = await PDFDocument.create();
+        for (const pg of pages) {
+          const bytes = new Uint8Array(await readImage(pg.image_path));
+          const img = /\.png$/i.test(pg.image_path) ? await pdf.embedPng(bytes) : await pdf.embedJpg(bytes);
+          const page = pdf.addPage([img.width, img.height]);
+          page.drawImage(img, { x: 0, y: 0, width: img.width, height: img.height });
+        }
+        const out = await pdf.save();
+        await saveExportFile(dir, uniqueBase(s, used) + ".pdf", Array.from(out));
+        done++;
+        pdfMsg.value = `正在导出… ${done} 份`;
+      } catch { failed.push(s.name); }
+    }
+    pdfMsg.value = "";
+    okMsg.value = `已导出 ${done} 份 PDF 到 ${dir}`
+      + (skipped ? `；跳过 ${skipped} 个无卷学生` : "")
+      + (failed.length ? `；失败 ${failed.length} 个（${failed.join("、")}）` : "");
+  } catch (e) { errorMsg.value = String(e); }
+  finally { exporting.value = false; }
+}
 
 // 展示用：单元文本（与 CSV 规则一致）
 function cellText(r: ExportData["rows"][number], i: number): string {
@@ -53,7 +109,13 @@ function isNoExamError(msg: string): boolean {
       <label v-if="data" class="include-comments">
         <input type="checkbox" v-model="includeComments" /> 含每题评语列
       </label>
+      <n-button :loading="exporting" :disabled="exporting" @click="doExportPdfs">导出每人 PDF…</n-button>
+      <label class="namemode">文件名
+        <label><input type="radio" value="name" v-model="nameMode" /> 姓名</label>
+        <label><input type="radio" value="number" v-model="nameMode" /> 学号</label>
+      </label>
     </n-space>
+    <n-alert v-if="pdfMsg" type="info" :title="pdfMsg" style="margin-top:8px"/>
     <n-alert v-if="errorMsg && !isNoExamError(errorMsg)" type="error" :title="errorMsg" closable @close="errorMsg=''" style="margin-top:8px"/>
     <n-alert v-if="okMsg" type="success" :title="okMsg" closable @close="okMsg=''" style="margin-top:8px"/>
 
@@ -112,6 +174,10 @@ function isNoExamError(msg: string): boolean {
 <style scoped>
 .export { padding: 16px; font-family: ui-monospace, monospace; }
 .include-comments { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; }
+.namemode { display: inline-flex; align-items: center; gap: 10px; font-size: 13px; }
+.namemode label { display: inline-flex; align-items: center; gap: 3px; }
+/* 打印时隐藏这些操作控件（沿用下方 @media print 规则里 n-space 已隐藏，这里补 alert） */
+@media print { .namemode { display: none !important; } }
 .coverage { margin: 12px 0; padding: 8px; border: 1px solid #444; }
 .report table { border-collapse: collapse; margin: 8px 0; width: 100%; }
 .report th, .report td { border: 1px solid #555; padding: 2px 8px; text-align: right; }
