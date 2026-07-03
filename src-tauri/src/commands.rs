@@ -143,6 +143,18 @@ pub fn save_csv(state: tauri::State<AppState>, path: String, include_comments: b
     std::fs::write(&path, bytes).map_err(e)
 }
 
+// 从 CSV 文件导入花名册（第一列姓名、第二列学号）。path 由对话框选取（可信）。
+// 中文 Excel 常存 GBK：先按 UTF-8 解码，失败则退回 GB18030（不会失败），再交纯解析器。
+#[tauri::command]
+pub fn import_roster_csv(state: tauri::State<AppState>, path: String) -> R<usize> {
+    let bytes = std::fs::read(&path).map_err(e)?;
+    let text = match std::str::from_utf8(&bytes) {
+        Ok(s) => s.to_string(),
+        Err(_) => encoding_rs::GB18030.decode(&bytes).0.into_owned(),
+    };
+    with_exam(&state, |oe| setup::import_roster(&oe.db, oe.exam_id, &setup::parse_roster_csv(&text)))
+}
+
 // 把前端拼好的每人 PDF 字节写进用户选的输出目录。dir 是对话框选的目录（可信），
 // filename 由前端从姓名/学号派生，仍过同一文件名护栏防越界。
 #[tauri::command]

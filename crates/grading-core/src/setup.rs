@@ -60,14 +60,69 @@ pub fn list_presets(db: &Db, problem_id: i64) -> Result<Vec<Preset>> {
 pub fn import_roster(db: &Db, exam_id: i64, rows: &[RosterRow]) -> Result<usize> {
     // 整份花名册在同一事务：任一行失败则全部回滚，不留半份导入。
     let tx = db.conn.unchecked_transaction()?;
+    // 追加到已有花名册之后：roster_order 从当前最大值 +1 起，避免二次导入撞序号。
+    let base: i64 = tx.query_row(
+        "SELECT COALESCE(MAX(roster_order)+1, 0) FROM student WHERE exam_id=?1", [exam_id], |r| r.get(0))?;
     for (i, row) in rows.iter().enumerate() {
         tx.execute(
             "INSERT INTO student(exam_id, name, exam_number, roster_order) VALUES(?1,?2,?3,?4)",
-            (exam_id, &row.name, &row.exam_number, i as i64),
+            (exam_id, &row.name, &row.exam_number, base + i as i64),
         )?;
     }
     tx.commit()?;
     Ok(rows.len())
+}
+
+/// 解析花名册 CSV：第一列姓名、第二列学号（其余列忽略）。
+/// 去 BOM、容忍 CRLF、支持带引号字段（内部逗号/双写引号）、跳过空行；
+/// 若首个数据行看起来是表头（姓名/name/名字 或 第二列 学号/考号/number）则跳过。
+pub fn parse_roster_csv(text: &str) -> Vec<RosterRow> {
+    let text = text.strip_prefix('\u{feff}').unwrap_or(text); // 去 UTF-8 BOM
+    let mut out = Vec::new();
+    let mut first = true;
+    for raw in text.split('\n') {
+        let line = raw.strip_suffix('\r').unwrap_or(raw);
+        if line.trim().is_empty() { continue; }
+        let fields = parse_csv_line(line);
+        let name = fields.first().map(|s| s.trim()).unwrap_or("");
+        let number = fields.get(1).map(|s| s.trim()).unwrap_or("");
+        if first {
+            first = false;
+            let n = name.to_ascii_lowercase();
+            let m = number.to_ascii_lowercase();
+            if matches!(n.as_str(), "姓名" | "name" | "名字")
+                || matches!(m.as_str(), "学号" | "考号" | "number" | "exam_number") {
+                continue; // 跳过表头行
+            }
+        }
+        if name.is_empty() { continue; }
+        out.push(RosterRow {
+            name: name.to_string(),
+            exam_number: if number.is_empty() { None } else { Some(number.to_string()) },
+        });
+    }
+    out
+}
+
+// 单行 CSV 字段拆分：支持 "..." 引号字段（内部 "" 转义为一个引号、可含逗号）。
+fn parse_csv_line(line: &str) -> Vec<String> {
+    let mut fields = Vec::new();
+    let mut cur = String::new();
+    let mut in_quotes = false;
+    let mut chars = line.chars().peekable();
+    while let Some(c) = chars.next() {
+        match c {
+            '"' if in_quotes => {
+                if chars.peek() == Some(&'"') { cur.push('"'); chars.next(); } // 转义引号
+                else { in_quotes = false; }
+            }
+            '"' => in_quotes = true,
+            ',' if !in_quotes => { fields.push(std::mem::take(&mut cur)); }
+            _ => cur.push(c),
+        }
+    }
+    fields.push(cur);
+    fields
 }
 
 pub fn list_students(db: &Db, exam_id: i64) -> Result<Vec<Student>> {
@@ -118,6 +173,35 @@ mod tests {
         assert_eq!(list_problems(&db, exam).unwrap()[0].rubric.as_deref(), Some("- 前两问各 3 分\n- 末问 4 分"));
         set_problem_rubric(&db, p, "   ").unwrap(); // 空白 = 清空
         assert_eq!(list_problems(&db, exam).unwrap()[0].rubric, None);
+    }
+
+    #[test]
+    fn parse_roster_csv_basics() {
+        // 去 BOM + 跳表头 + 空行 + 缺学号 + 带引号内含逗号
+        let csv = "\u{feff}姓名,学号\n张三,A01\n李四,\n\n\"王, 五\",A03\n";
+        let rows = parse_roster_csv(csv);
+        assert_eq!(rows.len(), 3);
+        assert_eq!(rows[0], RosterRow { name: "张三".into(), exam_number: Some("A01".into()) });
+        assert_eq!(rows[1], RosterRow { name: "李四".into(), exam_number: None });
+        assert_eq!(rows[2], RosterRow { name: "王, 五".into(), exam_number: Some("A03".into()) });
+    }
+
+    #[test]
+    fn parse_roster_csv_no_header_keeps_first_row() {
+        let rows = parse_roster_csv("陈一,B01\n周二,B02\n");
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].name, "陈一");
+    }
+
+    #[test]
+    fn import_roster_appends_after_existing() {
+        let db = Db::open_in_memory().unwrap();
+        let exam = create_exam(&db, "假物理", "2026-07-02").unwrap();
+        import_roster(&db, exam, &[RosterRow { name: "甲".into(), exam_number: None }]).unwrap();
+        import_roster(&db, exam, &[RosterRow { name: "乙".into(), exam_number: None }]).unwrap();
+        let students = list_students(&db, exam).unwrap(); // 按 roster_order
+        assert_eq!(students.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(), vec!["甲", "乙"]);
+        assert_eq!(students[1].roster_order, Some(1)); // 追加而非撞 0
     }
 
     #[test]

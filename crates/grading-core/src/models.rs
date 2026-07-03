@@ -9,7 +9,7 @@ pub struct Preset { pub id: i64, pub slot: i64, pub label: String, pub points: i
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Student { pub id: i64, pub name: String, pub exam_number: Option<String>, pub roster_order: Option<i64> }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct RosterRow { pub name: String, pub exam_number: Option<String> }
 
 /// 判分单元三态。字符串序列化，与 SQLite `score.state` 一致。

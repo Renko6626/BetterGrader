@@ -5,6 +5,7 @@ import {
   newExam, openExam, seedDemoExam, currentExam, listProblems, listPresets, listStudents, ingestFolder,
   listPdfs, readPdf, savePdfPage, addStudent, renameStudent, deleteStudent,
   addProblem, deleteProblem, setProblemMax, addPreset, deletePreset, setProblemRubric,
+  importRosterCsv,
 } from "../api";
 import type { Problem, Preset, Student, ExamInfo } from "../types";
 import { NButton, NCard, NDataTable, NAlert, NSpace, NInputNumber } from "naive-ui";
@@ -136,6 +137,17 @@ async function doDeleteProblem(id: number) {
     catch (e) { errorMsg.value = String(e); }
   }
 }
+async function doImportRoster() {
+  errorMsg.value = ""; ingestMsg.value = "";
+  try {
+    const path = await open({ multiple: false, title: "选择花名册 CSV（第一列姓名、第二列学号）",
+      filters: [{ name: "CSV", extensions: ["csv", "txt"] }] });
+    if (typeof path !== "string") return;
+    const n = await importRosterCsv(path);
+    ingestMsg.value = `已从 CSV 导入 ${n} 名学生（追加到花名册）`;
+    await refresh();
+  } catch (e) { errorMsg.value = String(e); }
+}
 async function doRename(sid: number, cur: string) {
   const name = window.prompt("改名", cur);
   if (name && name.trim()) {
@@ -174,6 +186,7 @@ onMounted(refresh);
       <n-button type="primary" @click="doDemo">新建演示考试…</n-button>
       <n-button v-if="exam" @click="doIngest">导入图片文件夹…</n-button>
       <n-button v-if="exam" :loading="importing" :disabled="importing" @click="doImportPdfs">导入 PDF 文件夹…</n-button>
+      <n-button v-if="exam" @click="doImportRoster">从 CSV 导入花名册…</n-button>
     </n-space>
     <n-alert v-if="errorMsg" type="error" :title="errorMsg" closable @close="errorMsg=''" style="margin-top:8px" />
     <n-alert v-if="ingestMsg" type="success" :title="ingestMsg" closable @close="ingestMsg=''" style="margin-top:8px" />

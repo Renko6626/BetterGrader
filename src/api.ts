@@ -44,6 +44,7 @@ export const setPageLabel = (pageId: number, studentId: number | null, problemNu
   invoke<void>("set_page_label", { pageId, studentId, problemNumber });
 export const addStudent = (name: string, examNumber: string | null) =>
   invoke<number>("add_student", { name, examNumber });
+export const importRosterCsv = (path: string) => invoke<number>("import_roster_csv", { path });
 export const labelingSummary = () => invoke<LabelSummary>("labeling_summary");
 
 // PDF 导入 / 评语 / 学生编辑

@@ -13,3 +13,4 @@ serde_json.workspace = true
 anyhow.workspace = true
 grading-core = { path = "../crates/grading-core" }
 tauri-plugin-dialog = "2"
+encoding_rs = "0.8"  # 中文 Excel 常导出 GBK CSV，需 UTF-8→GB18030 回退解码
