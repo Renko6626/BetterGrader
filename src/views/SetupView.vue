@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, reactive, onMounted, h } from "vue";
+import { ref, reactive, computed, onMounted, h } from "vue";
 import { open } from "@tauri-apps/plugin-dialog";
+import { listen } from "@tauri-apps/api/event";
 import {
   newExam, openExam, seedDemoExam, currentExam, listProblems, listPresets, listStudents, ingestFolder,
   listPdfs, readPdf, savePdfPage, addStudent, renameStudent, deleteStudent,
@@ -8,7 +9,7 @@ import {
   importRosterCsv,
 } from "../api";
 import type { Problem, Preset, Student, ExamInfo } from "../types";
-import { NButton, NCard, NDataTable, NAlert, NSpace, NInputNumber } from "naive-ui";
+import { NButton, NCard, NDataTable, NAlert, NSpace, NInputNumber, NProgress } from "naive-ui";
 import type { DataTableColumns } from "naive-ui";
 import { usePdf } from "../composables/usePdf";
 
@@ -22,6 +23,12 @@ const errorMsg = ref("");
 const ingestMsg = ref("");
 const pdfMsg = ref("");
 const importing = ref(false);
+// 长任务进度：done<0 表示"进行中但总数未知"（不确定态），否则显示 done/total 百分比
+const prog = ref<{ label: string; done: number; total: number } | null>(null);
+const progPct = computed(() =>
+  prog.value && prog.value.total > 0 ? Math.round(prog.value.done / prog.value.total * 100) : 0);
+// 让出一帧给浏览器重绘，否则重活循环里进度条不会动（看着像卡死）
+const paintTick = () => new Promise<void>((r) => setTimeout(r, 0));
 
 // 每题的"加档位"草稿（键槽/名称/分值）
 const draft = reactive<Record<number, { slot: number; label: string; points: number }>>({});
@@ -76,14 +83,19 @@ async function withDir(fn: (dir: string) => Promise<number>) {
   catch (e) { errorMsg.value = String(e); }
 }
 async function doIngest() {
-  errorMsg.value = "";
-  ingestMsg.value = "";
+  errorMsg.value = ""; ingestMsg.value = "";
+  const dir = await open({ directory: true, multiple: false, title: "选择图片文件夹" });
+  if (typeof dir !== "string") return;
+  // 拷贝在 Rust 里跑，靠 ingest://progress 事件回报进度
+  prog.value = { label: "导入图片", done: -1, total: 0 }; // 先"进行中"，收到首个事件才有总数
+  const unlisten = await listen<[number, number]>("ingest://progress", (e) => {
+    prog.value = { label: "导入图片", done: e.payload[0], total: e.payload[1] };
+  });
   try {
-    const dir = await open({ directory: true, multiple: false, title: "选择图片文件夹" });
-    if (typeof dir !== "string") return;
     const n = await ingestFolder(dir);
     ingestMsg.value = `已导入 ${n} 张图（去"标注"页开始标注）`;
   } catch (e) { errorMsg.value = String(e); }
+  finally { unlisten(); prog.value = null; }
 }
 async function doImportPdfs() {
   pdfMsg.value = ""; errorMsg.value = "";
@@ -93,6 +105,7 @@ async function doImportPdfs() {
     importing.value = true;
     const pdfs = await listPdfs(dir);
     let done = 0; const failed: string[] = [];
+    prog.value = { label: "导入 PDF", done: 0, total: pdfs.length };
     for (const name of pdfs) {
       try {
         const studentName = name.replace(/\.pdf$/i, "").trim() || name;
@@ -105,13 +118,15 @@ async function doImportPdfs() {
         }
         done++;
       } catch { failed.push(name); }
+      prog.value = { label: "导入 PDF", done: done + failed.length, total: pdfs.length };
       pdfMsg.value = `已导入 ${done}/${pdfs.length}…`;
+      await paintTick(); // 让进度条真正刷新，别让渲染霸着主线程
     }
     pdfMsg.value = failed.length
       ? `完成：导入 ${done} 份；失败 ${failed.length} 份（${failed.join("、")}）——可重试这些文件`
       : `完成：导入 ${done} 份 PDF（去"判分"直接开批；页数不符的在"标注"确认总表里修）`;
     await refresh();
-  } catch (e) { errorMsg.value = String(e); } finally { importing.value = false; }
+  } catch (e) { errorMsg.value = String(e); } finally { importing.value = false; prog.value = null; }
 }
 async function addOneProblem() {
   errorMsg.value = "";
@@ -191,6 +206,17 @@ onMounted(refresh);
     <n-alert v-if="errorMsg" type="error" :title="errorMsg" closable @close="errorMsg=''" style="margin-top:8px" />
     <n-alert v-if="ingestMsg" type="success" :title="ingestMsg" closable @close="ingestMsg=''" style="margin-top:8px" />
     <n-alert v-if="pdfMsg" type="success" :title="pdfMsg" closable @close="pdfMsg=''" style="margin-top:8px" />
+    <div v-if="prog" class="prog-box">
+      <span class="prog-label">
+        {{ prog.label }}…
+        <template v-if="prog.done >= 0 && prog.total > 0">{{ prog.done }} / {{ prog.total }}</template>
+        <template v-else>准备中</template>
+      </span>
+      <n-progress type="line"
+        :percentage="prog.done < 0 ? 0 : progPct"
+        :processing="prog.done < 0"
+        :indicator-placement="'inside'" />
+    </div>
     <p v-if="exam">当前：{{ exam.name }}</p>
     <p v-else>未打开考试。点上面按钮选一个目录。</p>
 
@@ -238,6 +264,8 @@ onMounted(refresh);
 </template>
 
 <style scoped>
+.prog-box { margin-top: 10px; padding: 10px; border: 1px solid #3a5570; background: #161c24; }
+.prog-label { display: block; font-size: 13px; color: #cfe3ff; margin-bottom: 6px; }
 .problems { margin: 12px 0; padding: 10px; border: 1px solid #333; }
 .problems h3 { margin: 0 0 6px; }
 .hint { color: #9aa0a6; font-size: 12px; margin: 4px 0; }

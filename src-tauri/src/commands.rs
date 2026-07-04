@@ -1,5 +1,6 @@
 use std::sync::Mutex;
 use std::path::PathBuf;
+use tauri::Emitter; // window.emit（ingest 进度事件）
 use grading_core::{Db, ExamInfo, Problem, Preset, Student, GradingUnit, PageRef, ScoreState, ExportData,
                    persist, setup, grading, fake, export, ingest, label, PageRow, LabelSummary};
 
@@ -166,7 +167,7 @@ pub fn save_export_file(dir: String, filename: String, bytes: Vec<u8>) -> R<()> 
 }
 
 #[tauri::command]
-pub fn ingest_folder(state: tauri::State<AppState>, src_dir: String) -> R<usize> {
+pub fn ingest_folder(state: tauri::State<AppState>, window: tauri::Window, src_dir: String) -> R<usize> {
     let guard = state.0.lock().map_err(e)?;
     let oe = guard.as_ref().ok_or_else(|| "no exam open".to_string())?;
     let src = PathBuf::from(&src_dir);
@@ -183,10 +184,13 @@ pub fn ingest_folder(state: tauri::State<AppState>, src_dir: String) -> R<usize>
         if matches!(ext.as_str(), "jpg" | "jpeg" | "png" | "webp") { names.push(name); }
     }
     let ordered = ingest::sort_scan_order(names);
+    let total = ordered.len();
+    // 先播总数：前端据此把进度条从"不确定"切成"确定"（0/total）
+    let _ = window.emit("ingest://progress", (0usize, total));
 
     let mut seq = ingest::next_seq(&oe.db, oe.exam_id).map_err(e)?;
     let mut count = 0usize;
-    for name in ordered {
+    for (i, name) in ordered.into_iter().enumerate() {
         // 目标文件名避免冲突：已存在则加 seq 前缀
         let mut dest_name = name.clone();
         if images.join(&dest_name).exists() { dest_name = format!("{seq}_{name}"); }
@@ -194,6 +198,7 @@ pub fn ingest_folder(state: tauri::State<AppState>, src_dir: String) -> R<usize>
         if std::fs::copy(src.join(&name), images.join(&dest_name)).is_err() { seq += 1; continue; }
         if ingest::add_ingested_page(&oe.db, oe.exam_id, &dest_name, seq).is_err() { seq += 1; continue; }
         seq += 1; count += 1;
+        let _ = window.emit("ingest://progress", (i + 1, total)); // 处理进度（含跳过的坏图，按已遍历计）
     }
     Ok(count)
 }

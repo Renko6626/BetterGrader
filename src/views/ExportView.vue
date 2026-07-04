@@ -1,11 +1,11 @@
 <!-- src/views/ExportView.vue -->
 <script setup lang="ts">
-import { ref } from "vue";
+import { ref, computed } from "vue";
 import { save, open } from "@tauri-apps/plugin-dialog";
 import { PDFDocument } from "pdf-lib";
 import { exportSummary, saveCsv, listStudents, studentPages, readImage, saveExportFile } from "../api";
 import type { ExportData, Student } from "../types";
-import { NButton, NAlert, NSpace } from "naive-ui";
+import { NButton, NAlert, NSpace, NProgress } from "naive-ui";
 
 const data = ref<ExportData | null>(null);
 const errorMsg = ref("");
@@ -14,7 +14,10 @@ const tried = ref(false); // 是否已尝试过计算（区分"从未点过"与"
 const includeComments = ref(false); // 导出 CSV 时是否含每题评语列
 const nameMode = ref<"name" | "number">("name"); // 每人 PDF 文件名取姓名还是学号
 const exporting = ref(false);
-const pdfMsg = ref("");
+const prog = ref<{ done: number; total: number } | null>(null);
+const progPct = computed(() =>
+  prog.value && prog.value.total > 0 ? Math.round(prog.value.done / prog.value.total * 100) : 0);
+const paintTick = () => new Promise<void>((r) => setTimeout(r, 0)); // 让出一帧，进度条才会动
 
 async function load() {
   errorMsg.value = ""; okMsg.value = ""; tried.value = true;
@@ -50,39 +53,43 @@ function uniqueBase(s: Student, used: Set<string>): string {
 
 // 把每个考生的图片按扫描序（含姓名页）拼成一份 PDF，写到用户选的目录。
 async function doExportPdfs() {
-  errorMsg.value = ""; okMsg.value = ""; pdfMsg.value = "";
+  errorMsg.value = ""; okMsg.value = "";
   const dir = await open({ directory: true, multiple: false, title: "选择 PDF 输出目录" });
   if (typeof dir !== "string") return;
   exporting.value = true;
   try {
     const students = await listStudents();
     const used = new Set<string>();
-    let done = 0, skipped = 0;
+    let done = 0, skipped = 0, processed = 0;
     const failed: string[] = [];
+    prog.value = { done: 0, total: students.length };
     for (const s of students) {
       // studentPages 按 seq 返回该生全部页（含姓名页 题0）；排除占位假图
       const pages = (await studentPages(s.id)).filter(p => p.image_path && !p.image_path.startsWith("fake://"));
-      if (!pages.length) { skipped++; continue; } // 无卷（缺考）跳过
-      try {
-        const pdf = await PDFDocument.create();
-        for (const pg of pages) {
-          const bytes = new Uint8Array(await readImage(pg.image_path));
-          const img = /\.png$/i.test(pg.image_path) ? await pdf.embedPng(bytes) : await pdf.embedJpg(bytes);
-          const page = pdf.addPage([img.width, img.height]);
-          page.drawImage(img, { x: 0, y: 0, width: img.width, height: img.height });
-        }
-        const out = await pdf.save();
-        await saveExportFile(dir, uniqueBase(s, used) + ".pdf", Array.from(out));
-        done++;
-        pdfMsg.value = `正在导出… ${done} 份`;
-      } catch { failed.push(s.name); }
+      if (!pages.length) {
+        skipped++; // 无卷（缺考）跳过——仍要推进进度，别让条卡住
+      } else {
+        try {
+          const pdf = await PDFDocument.create();
+          for (const pg of pages) {
+            const bytes = new Uint8Array(await readImage(pg.image_path));
+            const img = /\.png$/i.test(pg.image_path) ? await pdf.embedPng(bytes) : await pdf.embedJpg(bytes);
+            const page = pdf.addPage([img.width, img.height]);
+            page.drawImage(img, { x: 0, y: 0, width: img.width, height: img.height });
+          }
+          const out = await pdf.save();
+          await saveExportFile(dir, uniqueBase(s, used) + ".pdf", Array.from(out));
+          done++;
+        } catch { failed.push(s.name); }
+      }
+      prog.value = { done: ++processed, total: students.length };
+      await paintTick(); // 让进度条真正刷新，别让 pdf-lib 霸着主线程
     }
-    pdfMsg.value = "";
     okMsg.value = `已导出 ${done} 份 PDF 到 ${dir}`
       + (skipped ? `；跳过 ${skipped} 个无卷学生` : "")
       + (failed.length ? `；失败 ${failed.length} 个（${failed.join("、")}）` : "");
   } catch (e) { errorMsg.value = String(e); }
-  finally { exporting.value = false; }
+  finally { exporting.value = false; prog.value = null; }
 }
 
 // 展示用：单元文本（与 CSV 规则一致）
@@ -115,7 +122,10 @@ function isNoExamError(msg: string): boolean {
         <label><input type="radio" value="number" v-model="nameMode" /> 学号</label>
       </label>
     </n-space>
-    <n-alert v-if="pdfMsg" type="info" :title="pdfMsg" style="margin-top:8px"/>
+    <div v-if="prog" class="prog-box">
+      <span class="prog-label">导出每人 PDF… {{ prog.done }} / {{ prog.total }}</span>
+      <n-progress type="line" :percentage="progPct" :indicator-placement="'inside'" />
+    </div>
     <n-alert v-if="errorMsg && !isNoExamError(errorMsg)" type="error" :title="errorMsg" closable @close="errorMsg=''" style="margin-top:8px"/>
     <n-alert v-if="okMsg" type="success" :title="okMsg" closable @close="okMsg=''" style="margin-top:8px"/>
 
@@ -174,6 +184,8 @@ function isNoExamError(msg: string): boolean {
 <style scoped>
 .export { padding: 16px; font-family: ui-monospace, monospace; }
 .include-comments { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; }
+.prog-box { margin-top: 10px; padding: 10px; border: 1px solid #3a5570; background: #161c24; }
+.prog-label { display: block; font-size: 13px; color: #cfe3ff; margin-bottom: 6px; }
 .namemode { display: inline-flex; align-items: center; gap: 10px; font-size: 13px; }
 .namemode label { display: inline-flex; align-items: center; gap: 3px; }
 /* 打印时隐藏这些操作控件（沿用下方 @media print 规则里 n-space 已隐藏，这里补 alert） */
