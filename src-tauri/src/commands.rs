@@ -191,14 +191,17 @@ pub fn ingest_folder(state: tauri::State<AppState>, window: tauri::Window, src_d
     let mut seq = ingest::next_seq(&oe.db, oe.exam_id).map_err(e)?;
     let mut count = 0usize;
     for (i, name) in ordered.into_iter().enumerate() {
-        // 目标文件名避免冲突：已存在则加 seq 前缀
-        let mut dest_name = name.clone();
-        if images.join(&dest_name).exists() { dest_name = format!("{seq}_{name}"); }
-        // 单张失败则跳过、继续（不因一张坏图中止整批）；seq 仍推进以保序/唯一
-        if std::fs::copy(src.join(&name), images.join(&dest_name)).is_err() { seq += 1; continue; }
-        if ingest::add_ingested_page(&oe.db, oe.exam_id, &dest_name, seq).is_err() { seq += 1; continue; }
-        seq += 1; count += 1;
-        let _ = window.emit("ingest://progress", (i + 1, total)); // 处理进度（含跳过的坏图，按已遍历计）
+        // 幂等护栏：images/ 已有同名文件 = 之前已导入过，跳过（不拷、不建页），
+        // 使同一文件夹重复导入零新增，不再静默翻倍。seq 不推进（本张没建页）。
+        if images.join(&name).exists() {
+            // 无操作，落到下方统一 emit
+        } else if std::fs::copy(src.join(&name), images.join(&name)).is_ok()
+            && ingest::add_ingested_page(&oe.db, oe.exam_id, &name, seq).is_ok() {
+            seq += 1; count += 1;
+        } else {
+            seq += 1; // 坏图/写库失败：跳过但推进 seq 保序/唯一，不因一张中止整批
+        }
+        let _ = window.emit("ingest://progress", (i + 1, total)); // 每步都报（含跳过项），进度条不停
     }
     Ok(count)
 }

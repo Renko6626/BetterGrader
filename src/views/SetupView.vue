@@ -93,7 +93,9 @@ async function doIngest() {
   });
   try {
     const n = await ingestFolder(dir);
-    ingestMsg.value = `已导入 ${n} 张图（去"标注"页开始标注）`;
+    ingestMsg.value = n > 0
+      ? `已导入 ${n} 张图（去"标注"页开始标注）`
+      : `没有新增：这些图之前已导入过（同名自动跳过，不会重复）`;
   } catch (e) { errorMsg.value = String(e); }
   finally { unlisten(); prog.value = null; }
 }
