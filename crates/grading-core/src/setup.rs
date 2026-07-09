@@ -116,7 +116,8 @@ fn parse_csv_line(line: &str) -> Vec<String> {
                 if chars.peek() == Some(&'"') { cur.push('"'); chars.next(); } // 转义引号
                 else { in_quotes = false; }
             }
-            '"' => in_quotes = true,
+            '"' if cur.is_empty() => in_quotes = true, // 仅字段起始的引号才开引号态
+            '"' => cur.push('"'),                      // 字段中间的裸引号按字面量，不吞掉后面的逗号
             ',' if !in_quotes => { fields.push(std::mem::take(&mut cur)); }
             _ => cur.push(c),
         }
@@ -184,6 +185,14 @@ mod tests {
         assert_eq!(rows[0], RosterRow { name: "张三".into(), exam_number: Some("A01".into()) });
         assert_eq!(rows[1], RosterRow { name: "李四".into(), exam_number: None });
         assert_eq!(rows[2], RosterRow { name: "王, 五".into(), exam_number: Some("A03".into()) });
+    }
+
+    #[test]
+    fn parse_roster_csv_bare_quote_keeps_delimiter() {
+        // 字段中间的裸引号不得吞掉后面的逗号（否则学号会并进姓名丢失）
+        let rows = parse_roster_csv("李四\",A03\n");
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].exam_number.as_deref(), Some("A03")); // 逗号仍分隔，学号保住
     }
 
     #[test]

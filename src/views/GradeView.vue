@@ -229,6 +229,8 @@ function onKey(e: KeyboardEvent) {
     e.preventDefault(); showHelp.value = false; showRubric.value = false; return;
   }
   if (e.key === "Tab") { e.preventDefault(); sidebarCollapsed.value = !sidebarCollapsed.value; return; } // Tab 收起/展开左侧面板（同时避免焦点移入评语框废掉判分键）
+  // 浮层（评分标准/快捷键）开着时，判分键一律不落到 reducer——否则按 1-9/Enter/F 会给浮层背后那份隔空落分
+  if (showHelp.value || showRubric.value) return;
   const before = gs.value;
   const r = reduceGradeKey(gs.value, e.key, ctx.value);
   const handled = r.effect.kind !== "none"

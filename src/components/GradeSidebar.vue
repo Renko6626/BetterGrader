@@ -20,7 +20,7 @@ const binScore = (i: number) =>
       <div class="avg">
         本题平均 <b>{{ average != null ? average.toFixed(1) : "—" }}</b>
         <span class="slash">/ {{ dist.max }}</span>
-        <span class="sub">已判 {{ dist.total }} 份</span>
+        <span class="sub">已评 {{ dist.total }} 份</span>
       </div>
       <div v-if="dist.total" class="dist">
         <div class="dh">判分分布</div>

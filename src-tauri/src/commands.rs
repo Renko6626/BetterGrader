@@ -181,7 +181,8 @@ pub fn ingest_folder(state: tauri::State<AppState>, window: tauri::Window, src_d
         if !entry.file_type().map_err(e)?.is_file() { continue; }
         let name = entry.file_name().to_string_lossy().to_string();
         let ext = name.rsplit('.').next().unwrap_or("").to_ascii_lowercase();
-        if matches!(ext.as_str(), "jpg" | "jpeg" | "png" | "webp") { names.push(name); }
+        // 只收 jpg/png：导出每人 PDF 用 pdf-lib，只能嵌 JPEG/PNG；webp 会在导出时静默失败，故导入即拒
+        if matches!(ext.as_str(), "jpg" | "jpeg" | "png") { names.push(name); }
     }
     let ordered = ingest::sort_scan_order(names);
     let total = ordered.len();
