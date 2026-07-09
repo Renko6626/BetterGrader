@@ -208,29 +208,29 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
 </template>
 
 <style scoped>
-.label { height: 100%; display: flex; flex-direction: column; font-family: ui-monospace, monospace; color: #d0d0d0; }
+.label { height: 100%; display: flex; flex-direction: column; font-family: ui-monospace, monospace; color: var(--text-body); }
 .pane { flex: 1; display: flex; min-height: 0; }
 .img { flex: 1; display: flex; align-items: center; justify-content: center; overflow: auto; }
 .img img { max-width: 100%; max-height: 100%; }
-.ph { border: 1px dashed #555; padding: 40px; color: #888; }
-.side { width: 260px; border-left: 1px solid #333; padding: 12px; }
+.ph { border: 1px dashed var(--border); padding: 40px; color: var(--text-faint); }
+.side { width: 260px; border-left: 1px solid var(--border); padding: 12px; }
 .side .cur { font-size: 15px; }
-.side .cur b { color: #7fd; }
+.side .cur b { color: var(--ok); }
 .side .edit { margin: 8px 0; }
 .side .edit label { display: inline-flex; align-items: center; gap: 6px; }
-.side .pn { width: 56px; background: #14161a; border: 1px solid #555; color: #d0d0d0;
+.side .pn { width: 56px; background: var(--panel); border: 1px solid var(--border); color: var(--text-body);
   font-family: inherit; padding: 3px 6px; text-align: center; }
-.side .hint { display: block; color: #888; font-size: 11px; margin-top: 4px; }
-.side .sep { border: none; border-top: 1px solid #2a2d33; margin: 12px 0; }
-.side .dim { color: #9aa0a6; font-size: 12px; }
-.side .keys { color: #888; font-size: 12px; margin-top: 12px; }
+.side .hint { display: block; color: var(--text-faint); font-size: 11px; margin-top: 4px; }
+.side .sep { border: none; border-top: 1px solid var(--border-subtle); margin: 12px 0; }
+.side .dim { color: var(--text-dim); font-size: 12px; }
+.side .keys { color: var(--text-faint); font-size: 12px; margin-top: 12px; }
 .picklist { max-height: 220px; overflow: auto; margin: 8px 0; }
 .picklist li { cursor: pointer; padding: 2px 4px; list-style: none; }
-.picklist li:hover { color: #7fd; }
-.summary { border-top: 1px solid #333; padding: 8px 12px; max-height: 30vh; overflow: auto; }
+.picklist li:hover { color: var(--ok); }
+.summary { border-top: 1px solid var(--border); padding: 8px 12px; max-height: 30vh; overflow: auto; }
 .summary table { border-collapse: collapse; }
-.summary th, .summary td { border: 1px solid #444; padding: 2px 10px; }
-.summary tr.bad td { color: #f77; }
-.summary .absent { color: #fb7; }
-.summary .hint2 { color: #9aa0a6; font-size: 12px; margin-top: 4px; }
+.summary th, .summary td { border: 1px solid var(--border); padding: 2px 10px; }
+.summary tr.bad td { color: var(--err); }
+.summary .absent { color: var(--warn); }
+.summary .hint2 { color: var(--text-dim); font-size: 12px; margin-top: 4px; }
 </style>

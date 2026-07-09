@@ -184,17 +184,17 @@ function isNoExamError(msg: string): boolean {
 <style scoped>
 .export { padding: 16px; font-family: ui-monospace, monospace; }
 .include-comments { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; }
-.prog-box { margin-top: 10px; padding: 10px; border: 1px solid #3a5570; background: #161c24; }
-.prog-label { display: block; font-size: 13px; color: #cfe3ff; margin-bottom: 6px; }
+.prog-box { margin-top: 10px; padding: 10px; border: 1px solid var(--border-accent); background: var(--elevated); }
+.prog-label { display: block; font-size: 13px; color: var(--accent-soft); margin-bottom: 6px; }
 .namemode { display: inline-flex; align-items: center; gap: 10px; font-size: 13px; }
 .namemode label { display: inline-flex; align-items: center; gap: 3px; }
 /* 打印时隐藏这些操作控件（沿用下方 @media print 规则里 n-space 已隐藏，这里补 alert） */
 @media print { .namemode { display: none !important; } }
-.coverage { margin: 12px 0; padding: 8px; border: 1px solid #444; }
+.coverage { margin: 12px 0; padding: 8px; border: 1px solid var(--border); }
 .report table { border-collapse: collapse; margin: 8px 0; width: 100%; }
-.report th, .report td { border: 1px solid #555; padding: 2px 8px; text-align: right; }
+.report th, .report td { border: 1px solid var(--border); padding: 2px 8px; text-align: right; }
 .report th:first-child, .report td:first-child { text-align: left; }
-.report tr.absent { color: #999; }
+.report tr.absent { color: var(--text-faint); }
 /* 打印：只留报表，去掉按钮/背景 */
 @media print {
   .export > .n-space, .export > .n-alert, .coverage { display: none !important; }

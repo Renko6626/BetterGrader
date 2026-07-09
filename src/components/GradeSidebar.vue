@@ -46,40 +46,40 @@ const binScore = (i: number) =>
 /* 悬浮图层：覆盖在卷面左侧上方；pointer-events 只在面板/标签上生效，其余区域可穿透操作卷面 */
 .sidebar { position: absolute; left: 0; top: 0; bottom: 0; z-index: 5;
   display: flex; align-items: stretch; pointer-events: none;
-  font-family: ui-monospace, monospace; color: #d8d8d8; }
+  font-family: ui-monospace, monospace; color: var(--text-body); }
 .body { pointer-events: auto; width: 210px; box-sizing: border-box; height: 100%;
-  background: rgba(20, 22, 26, 0.94); border-right: 1px solid #333; padding: 12px; overflow: hidden;
+  background: rgba(20, 22, 26, 0.94); border-right: 1px solid var(--border); padding: 12px; overflow: hidden;
   display: flex; flex-direction: column; }
 .avg, .dist, .empty { flex: none; }
-.tab { pointer-events: auto; align-self: center; background: #1c1f24; border: 1px solid #333; border-left: none;
-  color: #9aa0a6; cursor: pointer; padding: 10px 4px; border-radius: 0 4px 4px 0; user-select: none; }
+.tab { pointer-events: auto; align-self: center; background: var(--elevated); border: 1px solid var(--border); border-left: none;
+  color: var(--text-dim); cursor: pointer; padding: 10px 4px; border-radius: 0 4px 4px 0; user-select: none; }
 .avg { font-size: 13px; margin-bottom: 12px; line-height: 1.5; }
-.avg b { color: #7fd; font-size: 22px; }
-.avg .slash { color: #9aa0a6; }
-.avg .sub { display: block; color: #888; font-size: 12px; margin-top: 2px; }
-.dist .dh { font-size: 12px; color: #9aa0a6; margin-bottom: 4px; }
-.dist .bars { display: flex; align-items: flex-end; gap: 2px; height: 100px; border-bottom: 1px solid #333; }
-.dist .bar { flex: 1; background: #4f8cff; min-width: 3px; }
-.dist .axis { display: flex; justify-content: space-between; font-size: 11px; color: #888; margin-top: 2px; }
-.empty { color: #888; font-size: 12px; }
+.avg b { color: var(--ok); font-size: 22px; }
+.avg .slash { color: var(--text-dim); }
+.avg .sub { display: block; color: var(--text-faint); font-size: 12px; margin-top: 2px; }
+.dist .dh { font-size: 12px; color: var(--text-dim); margin-bottom: 4px; }
+.dist .bars { display: flex; align-items: flex-end; gap: 2px; height: 100px; border-bottom: 1px solid var(--border); }
+.dist .bar { flex: 1; background: var(--accent); min-width: 3px; }
+.dist .axis { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-faint); margin-top: 2px; }
+.empty { color: var(--text-faint); font-size: 12px; }
 /* 下半部评分标准：填满剩余高度，y 方向硬截断 + 底部渐隐 */
 .rubric { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column;
-  margin-top: 12px; padding-top: 8px; border-top: 1px solid #2a2d33; }
+  margin-top: 12px; padding-top: 8px; border-top: 1px solid var(--border-subtle); }
 .rubric .rh { flex: none; display: flex; justify-content: space-between; align-items: baseline;
-  font-size: 12px; color: #9aa0a6; margin-bottom: 4px; }
-.rubric .rh .more { font-size: 11px; color: #6698cc; }
+  font-size: 12px; color: var(--text-dim); margin-bottom: 4px; }
+.rubric .rh .more { font-size: 11px; color: var(--accent-soft); }
 .rb-clip { flex: 1; min-height: 0; overflow: hidden; position: relative;
-  font-size: 12px; line-height: 1.55; color: #c8ccd2; }
+  font-size: 12px; line-height: 1.55; color: var(--text-body); }
 /* 截断处渐隐，暗示"还有更多，按 R 看全" */
 .rb-clip::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 34px;
   background: linear-gradient(transparent, rgba(20, 22, 26, 0.94)); pointer-events: none; }
-.rb-clip :deep(h1), .rb-clip :deep(h2), .rb-clip :deep(h3) { color: #e6e6e6; font-size: 13px; margin: 8px 0 3px; }
+.rb-clip :deep(h1), .rb-clip :deep(h2), .rb-clip :deep(h3) { color: var(--text); font-size: 13px; margin: 8px 0 3px; }
 .rb-clip :deep(ul), .rb-clip :deep(ol) { padding-left: 18px; margin: 3px 0; }
 .rb-clip :deep(li) { margin: 2px 0; }
 .rb-clip :deep(p) { margin: 3px 0; }
-.rb-clip :deep(strong) { color: #7fd; }
-.rb-clip :deep(code) { background: #22262c; border-radius: 2px; padding: 0 3px; }
-.rb-clip :deep(pre) { background: #14161a; border: 1px solid #333; border-radius: 3px; padding: 6px; overflow: hidden; }
+.rb-clip :deep(strong) { color: var(--ok); }
+.rb-clip :deep(code) { background: var(--chip); border-radius: 2px; padding: 0 3px; }
+.rb-clip :deep(pre) { background: var(--panel); border: 1px solid var(--border); border-radius: 3px; padding: 6px; overflow: hidden; }
 .rb-clip :deep(table) { border-collapse: collapse; }
-.rb-clip :deep(th), .rb-clip :deep(td) { border: 1px solid #3a3f47; padding: 1px 5px; }
+.rb-clip :deep(th), .rb-clip :deep(td) { border: 1px solid var(--border); padding: 1px 5px; }
 </style>

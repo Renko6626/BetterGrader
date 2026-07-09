@@ -268,25 +268,25 @@ onMounted(refresh);
 </template>
 
 <style scoped>
-.prog-box { margin-top: 10px; padding: 10px; border: 1px solid #3a5570; background: #161c24; }
-.prog-label { display: block; font-size: 13px; color: #cfe3ff; margin-bottom: 6px; }
-.problems { margin: 12px 0; padding: 10px; border: 1px solid #333; }
+.prog-box { margin-top: 10px; padding: 10px; border: 1px solid var(--border-accent); background: var(--elevated); }
+.prog-label { display: block; font-size: 13px; color: var(--accent-soft); margin-bottom: 6px; }
+.problems { margin: 12px 0; padding: 10px; border: 1px solid var(--border); }
 .problems h3 { margin: 0 0 6px; }
-.hint { color: #9aa0a6; font-size: 12px; margin: 4px 0; }
-.prob { border-top: 1px solid #2a2d33; padding: 8px 0; }
+.hint { color: var(--text-dim); font-size: 12px; margin: 4px 0; }
+.prob { border-top: 1px solid var(--border-subtle); padding: 8px 0; }
 .prow { display: flex; align-items: center; gap: 14px; }
 .prow .pn { min-width: 3em; }
-.preset-edit { margin-top: 6px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; color: #b8bdc4; }
-.preset-edit .pl { color: #9aa0a6; }
-.chip { border: 1px solid #3a3f47; border-radius: 3px; padding: 1px 6px; }
-.chip b { color: #7fd; margin-right: 4px; }
-.chip .x { color: #f77; cursor: pointer; margin-left: 6px; text-decoration: none; }
+.preset-edit { margin-top: 6px; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; color: var(--text-dim); }
+.preset-edit .pl { color: var(--text-dim); }
+.chip { border: 1px solid var(--border); border-radius: 3px; padding: 1px 6px; }
+.chip b { color: var(--ok); margin-right: 4px; }
+.chip .x { color: var(--err); cursor: pointer; margin-left: 6px; text-decoration: none; }
 .addp { display: inline-flex; align-items: center; gap: 4px; }
-.addp .sel { background: #14161a; color: #d0d0d0; border: 1px solid #555; }
-.addp .il { width: 120px; background: #14161a; color: #d0d0d0; border: 1px solid #555; padding: 2px 4px; }
-.addp .ip { width: 56px; background: #14161a; color: #d0d0d0; border: 1px solid #555; padding: 2px 4px; }
-.rubric-edit { margin-top: 6px; display: flex; align-items: flex-start; gap: 8px; font-size: 12px; color: #b8bdc4; }
-.rubric-edit .pl { color: #9aa0a6; padding-top: 4px; white-space: nowrap; }
-.rubric-edit .rb { flex: 1; min-height: 54px; resize: vertical; background: #14161a; color: #d0d0d0;
-  border: 1px solid #555; padding: 4px 6px; font-family: ui-monospace, monospace; font-size: 12px; }
+.addp .sel { background: var(--panel); color: var(--text-body); border: 1px solid var(--border); }
+.addp .il { width: 120px; background: var(--panel); color: var(--text-body); border: 1px solid var(--border); padding: 2px 4px; }
+.addp .ip { width: 56px; background: var(--panel); color: var(--text-body); border: 1px solid var(--border); padding: 2px 4px; }
+.rubric-edit { margin-top: 6px; display: flex; align-items: flex-start; gap: 8px; font-size: 12px; color: var(--text-dim); }
+.rubric-edit .pl { color: var(--text-dim); padding-top: 4px; white-space: nowrap; }
+.rubric-edit .rb { flex: 1; min-height: 54px; resize: vertical; background: var(--panel); color: var(--text-body);
+  border: 1px solid var(--border); padding: 4px 6px; font-family: ui-monospace, monospace; font-size: 12px; }
 </style>
