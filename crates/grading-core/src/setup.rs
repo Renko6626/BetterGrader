@@ -60,17 +60,29 @@ pub fn list_presets(db: &Db, problem_id: i64) -> Result<Vec<Preset>> {
 pub fn import_roster(db: &Db, exam_id: i64, rows: &[RosterRow]) -> Result<usize> {
     // 整份花名册在同一事务：任一行失败则全部回滚，不留半份导入。
     let tx = db.conn.unchecked_transaction()?;
+    // 按 (姓名, 学号) 去重：跳过已在花名册里的同名同号者，使重复导入同一份 CSV 幂等（不翻倍）；
+    // 真正的新人仍追加。同名不同号（如重名/双胞胎）视为不同人，保留。
+    let mut existing: std::collections::HashSet<(String, Option<String>)> = std::collections::HashSet::new();
+    {
+        let mut stmt = tx.prepare("SELECT name, exam_number FROM student WHERE exam_id=?1")?;
+        let it = stmt.query_map([exam_id], |r| Ok((r.get::<_, String>(0)?, r.get::<_, Option<String>>(1)?)))?;
+        for row in it { let (n, e) = row?; existing.insert((n, e)); }
+    }
     // 追加到已有花名册之后：roster_order 从当前最大值 +1 起，避免二次导入撞序号。
-    let base: i64 = tx.query_row(
+    let mut order: i64 = tx.query_row(
         "SELECT COALESCE(MAX(roster_order)+1, 0) FROM student WHERE exam_id=?1", [exam_id], |r| r.get(0))?;
-    for (i, row) in rows.iter().enumerate() {
+    let mut inserted = 0usize;
+    for row in rows {
+        let key = (row.name.clone(), row.exam_number.clone());
+        if existing.contains(&key) { continue; } // 已存在，跳过（含本份 CSV 内部重复行）
         tx.execute(
             "INSERT INTO student(exam_id, name, exam_number, roster_order) VALUES(?1,?2,?3,?4)",
-            (exam_id, &row.name, &row.exam_number, base + i as i64),
+            (exam_id, &row.name, &row.exam_number, order),
         )?;
+        existing.insert(key); order += 1; inserted += 1;
     }
     tx.commit()?;
-    Ok(rows.len())
+    Ok(inserted)
 }
 
 /// 解析花名册 CSV：第一列姓名、第二列学号（其余列忽略）。
@@ -211,6 +223,25 @@ mod tests {
         let students = list_students(&db, exam).unwrap(); // 按 roster_order
         assert_eq!(students.iter().map(|s| s.name.as_str()).collect::<Vec<_>>(), vec!["甲", "乙"]);
         assert_eq!(students[1].roster_order, Some(1)); // 追加而非撞 0
+    }
+
+    #[test]
+    fn import_roster_dedups_on_reimport() {
+        let db = Db::open_in_memory().unwrap();
+        let exam = create_exam(&db, "假物理", "2026-07-02").unwrap();
+        let csv = &[
+            RosterRow { name: "张三".into(), exam_number: Some("A01".into()) },
+            RosterRow { name: "李四".into(), exam_number: None },
+        ];
+        assert_eq!(import_roster(&db, exam, csv).unwrap(), 2);
+        assert_eq!(import_roster(&db, exam, csv).unwrap(), 0); // 重导同一份：零新增
+        // 混入一个新人 + 两个老人：只加新人
+        let mixed = &[
+            RosterRow { name: "张三".into(), exam_number: Some("A01".into()) },
+            RosterRow { name: "王五".into(), exam_number: Some("A03".into()) },
+        ];
+        assert_eq!(import_roster(&db, exam, mixed).unwrap(), 1);
+        assert_eq!(list_students(&db, exam).unwrap().len(), 3); // 张三、李四、王五
     }
 
     #[test]

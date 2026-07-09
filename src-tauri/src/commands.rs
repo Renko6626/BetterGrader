@@ -189,22 +189,46 @@ pub fn ingest_folder(state: tauri::State<AppState>, window: tauri::Window, src_d
     // 先播总数：前端据此把进度条从"不确定"切成"确定"（0/total）
     let _ = window.emit("ingest://progress", (0usize, total));
 
+    // 幂等护栏按【内容指纹】而非文件名：预扫 images/ 里已有图片的内容 hash。
+    // 内容相同 = 之前已导入过 → 跳过（同一文件夹重导零新增，不翻倍）；
+    // 仅文件名相同但内容不同（如两批扫描各自从 001.jpg 编号）→ 换名 {seq}_名 保留两份，不再静默丢整批。
+    let mut seen: std::collections::HashSet<u64> = std::collections::HashSet::new();
+    for entry in std::fs::read_dir(&images).map_err(e)? {
+        let entry = entry.map_err(e)?;
+        if entry.file_type().map_err(e)?.is_file() {
+            if let Ok(bytes) = std::fs::read(entry.path()) { seen.insert(content_key(&bytes)); }
+        }
+    }
+
     let mut seq = ingest::next_seq(&oe.db, oe.exam_id).map_err(e)?;
     let mut count = 0usize;
     for (i, name) in ordered.into_iter().enumerate() {
-        // 幂等护栏：images/ 已有同名文件 = 之前已导入过，跳过（不拷、不建页），
-        // 使同一文件夹重复导入零新增，不再静默翻倍。seq 不推进（本张没建页）。
-        if images.join(&name).exists() {
-            // 无操作，落到下方统一 emit
-        } else if std::fs::copy(src.join(&name), images.join(&name)).is_ok()
-            && ingest::add_ingested_page(&oe.db, oe.exam_id, &name, seq).is_ok() {
-            seq += 1; count += 1;
-        } else {
-            seq += 1; // 坏图/写库失败：跳过但推进 seq 保序/唯一，不因一张中止整批
+        if let Ok(bytes) = std::fs::read(src.join(&name)) {
+            let key = content_key(&bytes);
+            if seen.contains(&key) {
+                // 内容已存在 = 之前已导入过，幂等跳过（seq 不推进）
+            } else {
+                // 名字被占（但内容不同）就加 seq 前缀，保留两份
+                let dest = if images.join(&name).exists() { format!("{seq}_{name}") } else { name.clone() };
+                if std::fs::write(images.join(&dest), &bytes).is_ok()
+                    && ingest::add_ingested_page(&oe.db, oe.exam_id, &dest, seq).is_ok() {
+                    seen.insert(key); seq += 1; count += 1;
+                } else {
+                    seq += 1; // 写盘/建页失败：跳过但推进 seq 保序/唯一，不因一张中止整批
+                }
+            }
         }
         let _ = window.emit("ingest://progress", (i + 1, total)); // 每步都报（含跳过项），进度条不停
     }
     Ok(count)
+}
+
+// 图片内容指纹（用于导入幂等去重）。SipHash 对全字节，碰撞概率对本用途可忽略。
+fn content_key(bytes: &[u8]) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    bytes.hash(&mut h);
+    h.finish()
 }
 
 #[tauri::command]

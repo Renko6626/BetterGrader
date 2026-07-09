@@ -95,7 +95,7 @@ async function doIngest() {
     const n = await ingestFolder(dir);
     ingestMsg.value = n > 0
       ? `已导入 ${n} 张图（去"标注"页开始标注）`
-      : `没有新增：这些图之前已导入过（同名自动跳过，不会重复）`;
+      : `没有新增：这些图之前已导入过（按内容去重，不会重复）`;
   } catch (e) { errorMsg.value = String(e); }
   finally { unlisten(); prog.value = null; }
 }
@@ -161,7 +161,9 @@ async function doImportRoster() {
       filters: [{ name: "CSV", extensions: ["csv", "txt"] }] });
     if (typeof path !== "string") return;
     const n = await importRosterCsv(path);
-    ingestMsg.value = `已从 CSV 导入 ${n} 名学生（追加到花名册）`;
+    ingestMsg.value = n > 0
+      ? `已从 CSV 导入 ${n} 名学生（追加到花名册）`
+      : `没有新增：CSV 里的学生都已在花名册中（按姓名+学号去重）`;
     await refresh();
   } catch (e) { errorMsg.value = String(e); }
 }
