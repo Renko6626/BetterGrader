@@ -6,6 +6,7 @@ import type { PageRow, LabelSummary, Student } from "../types";
 import { useImage } from "../composables/useImage";
 import { initialLabelState, reduceLabelKey, pickStudent, type LabelState, type LabelEffect } from "../composables/useLabelKeys";
 import { NModal, NInput, NButton, NAlert } from "naive-ui";
+import { humanizeError } from "../errors";
 
 const pages = ref<PageRow[]>([]);
 const students = ref<Student[]>([]);
@@ -56,7 +57,7 @@ async function applyProblemInput() {
     await setPageLabel(c.id, c.student_id, n);
     c.problem_number = n; c.status = "labeled";
     errorMsg.value = "";
-  } catch (e) { errorMsg.value = String(e); }
+  } catch (e) { errorMsg.value = humanizeError(e); }
 }
 
 async function reload() {
@@ -65,14 +66,14 @@ async function reload() {
     students.value = await listStudents();
     await refreshImage();
   } catch (e) {
-    errorMsg.value = String(e);
+    errorMsg.value = humanizeError(e);
   }
 }
 async function refreshImage() {
   try {
     await show(cur.value ? cur.value.image_path : null);
   } catch (e) {
-    errorMsg.value = String(e);
+    errorMsg.value = humanizeError(e);
   }
   syncPageEdit(); // 每次换页同步题号输入框 + 手动流续接
 }
@@ -80,7 +81,7 @@ async function refreshSummary() {
   try {
     summary.value = await labelingSummary();
   } catch (e) {
-    errorMsg.value = String(e);
+    errorMsg.value = humanizeError(e);
   }
 }
 // 整叠题号 ±1 平移（治无姓名页/多扫一张导致的整叠错位）
@@ -90,7 +91,7 @@ async function doShiftStack(studentId: number, delta: number) {
     await shiftStudentProblems(studentId, delta);
     await reload();
     await refreshSummary();
-  } catch (e) { errorMsg.value = String(e); }
+  } catch (e) { errorMsg.value = humanizeError(e); }
 }
 
 async function applyEffect(eff: LabelEffect, targetPage: PageRow | null) {
@@ -101,7 +102,7 @@ async function applyEffect(eff: LabelEffect, targetPage: PageRow | null) {
       // 本地同步，避免整列重查
       targetPage.student_id = eff.studentId; targetPage.problem_number = eff.problemNumber; targetPage.status = "labeled";
     } catch (e) {
-      errorMsg.value = String(e);
+      errorMsg.value = humanizeError(e);
     }
   }
 }
@@ -136,7 +137,7 @@ async function addAndPick() {
     students.value = await listStudents();
     await confirmPick(id);
   } catch (e) {
-    errorMsg.value = String(e);
+    errorMsg.value = humanizeError(e);
   }
 }
 

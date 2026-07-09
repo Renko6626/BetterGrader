@@ -5,10 +5,12 @@ import { save, open } from "@tauri-apps/plugin-dialog";
 import { PDFDocument } from "pdf-lib";
 import { exportSummary, saveCsv, listStudents, studentPages, readImage, saveExportFile } from "../api";
 import type { ExportData, Student } from "../types";
-import { NButton, NAlert, NSpace, NProgress } from "naive-ui";
+import { NButton, NAlert, NSpace, NProgress, NCheckbox, NRadioGroup, NRadioButton } from "naive-ui";
+import { humanizeError, isNoExam } from "../errors";
 
 const data = ref<ExportData | null>(null);
 const errorMsg = ref("");
+const noExam = ref(false); // 当前报错是否为"未打开考试"——决定用引导(warning)还是报错(error)样式
 const okMsg = ref("");
 const tried = ref(false); // 是否已尝试过计算（区分"从未点过"与"点过但无考试"）
 const includeComments = ref(false); // 导出 CSV 时是否含每题评语列
@@ -19,10 +21,11 @@ const progPct = computed(() =>
   prog.value && prog.value.total > 0 ? Math.round(prog.value.done / prog.value.total * 100) : 0);
 const paintTick = () => new Promise<void>((r) => setTimeout(r, 0)); // 让出一帧，进度条才会动
 
+function reportError(e: unknown) { noExam.value = isNoExam(e); errorMsg.value = humanizeError(e); }
 async function load() {
   errorMsg.value = ""; okMsg.value = ""; tried.value = true;
   try { data.value = await exportSummary(); }
-  catch (e) { data.value = null; errorMsg.value = String(e); }
+  catch (e) { data.value = null; reportError(e); }
 }
 async function doSaveCsv() {
   errorMsg.value = ""; okMsg.value = "";
@@ -32,7 +35,7 @@ async function doSaveCsv() {
     if (!path) return;
     await saveCsv(path, includeComments.value);
     okMsg.value = `已保存：${path}`;
-  } catch (e) { errorMsg.value = String(e); }
+  } catch (e) { reportError(e); }
 }
 function printReport() { window.print(); }
 
@@ -88,7 +91,7 @@ async function doExportPdfs() {
     okMsg.value = `已导出 ${done} 份 PDF 到 ${dir}`
       + (skipped ? `；跳过 ${skipped} 个无卷学生` : "")
       + (failed.length ? `；失败 ${failed.length} 个（${failed.join("、")}）` : "");
-  } catch (e) { errorMsg.value = String(e); }
+  } catch (e) { reportError(e); }
   finally { exporting.value = false; prog.value = null; }
 }
 
@@ -101,10 +104,6 @@ function cellText(r: ExportData["rows"][number], i: number): string {
   return ""; // Ungraded 留空
 }
 
-// "无考试"提示：exportSummary 报错文案里含 "no exam open" 时给出更清晰的中文引导
-function isNoExamError(msg: string): boolean {
-  return /no exam open/i.test(msg);
-}
 </script>
 
 <template>
@@ -113,28 +112,26 @@ function isNoExamError(msg: string): boolean {
       <n-button @click="load">计算成绩汇总</n-button>
       <n-button v-if="data" @click="doSaveCsv">保存 CSV…</n-button>
       <n-button v-if="data" @click="printReport">打印 / 导出 PDF</n-button>
-      <label v-if="data" class="include-comments">
-        <input type="checkbox" v-model="includeComments" /> 含每题评语列
-      </label>
+      <n-checkbox v-if="data" v-model:checked="includeComments">含每题评语列</n-checkbox>
       <n-button :loading="exporting" :disabled="exporting" @click="doExportPdfs">导出每人 PDF…</n-button>
-      <label class="namemode">文件名
-        <label><input type="radio" value="name" v-model="nameMode" /> 姓名</label>
-        <label><input type="radio" value="number" v-model="nameMode" /> 学号</label>
-      </label>
+      <span class="namemode">文件名
+        <n-radio-group v-model:value="nameMode" size="small">
+          <n-radio-button value="name">姓名</n-radio-button>
+          <n-radio-button value="number">考号</n-radio-button>
+        </n-radio-group>
+      </span>
     </n-space>
     <div v-if="prog" class="prog-box">
       <span class="prog-label">导出每人 PDF… {{ prog.done }} / {{ prog.total }}</span>
       <n-progress type="line" :percentage="progPct" :indicator-placement="'inside'" />
     </div>
-    <n-alert v-if="errorMsg && !isNoExamError(errorMsg)" type="error" :title="errorMsg" closable @close="errorMsg=''" style="margin-top:8px"/>
-    <n-alert v-if="okMsg" type="success" :title="okMsg" closable @close="okMsg=''" style="margin-top:8px"/>
-
-    <!-- 无考试打开时的清晰提示，替代空白/困惑的界面 -->
-    <n-alert v-if="tried && !data && isNoExamError(errorMsg)" type="warning"
-             title="尚未打开任何考试" style="margin-top:8px">
-      请先在「考试设置」打开或新建一个考试，再回到这里计算成绩汇总。
+    <!-- 未打开考试 → 引导(warning)；其余 → 报错(error)。两者都由 humanizeError 转成中文可操作文案 -->
+    <n-alert v-if="errorMsg && noExam" type="warning" title="尚未打开考试" :show-icon="true" style="margin-top:8px">
+      {{ errorMsg }}
     </n-alert>
-    <p v-else-if="!tried" style="margin-top:8px; opacity:0.8;">
+    <n-alert v-else-if="errorMsg" type="error" :title="errorMsg" closable @close="errorMsg=''" style="margin-top:8px"/>
+    <n-alert v-if="okMsg" type="success" :title="okMsg" closable @close="okMsg=''" style="margin-top:8px"/>
+    <p v-if="!tried && !errorMsg" style="margin-top:8px; opacity:0.8;">
       点击"计算成绩汇总"生成覆盖率确认与可打印报表。
     </p>
 

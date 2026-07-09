@@ -10,6 +10,7 @@ import {
 } from "../composables/useGradeKeys";
 import GradeSidebar from "../components/GradeSidebar.vue";
 import { marked } from "marked";
+import { humanizeError } from "../errors";
 
 // 题目选择：列出各题，用户选中后载该题队列（不再固定 problemNumber=1）
 const problems = ref<Problem[]>([]);
@@ -127,7 +128,7 @@ async function initProblems() {
     problems.value = await listProblems();
     if (problems.value.length && problemNumber.value == null) problemNumber.value = problems.value[0].number;
   } catch (e) {
-    errorMsg.value = String(e);
+    errorMsg.value = humanizeError(e);
   }
 }
 async function loadQueue() {
@@ -139,7 +140,7 @@ async function loadQueue() {
     await refreshImg();
     syncComment(); resetZoom();
   } catch (e) {
-    errorMsg.value = String(e); // 未 seed 时 buildQueue 会拒绝，优雅降级为横幅+"队列为空"
+    errorMsg.value = humanizeError(e); // 未 seed 时 buildQueue 会拒绝，优雅降级为横幅+"队列为空"
   }
 }
 async function refreshPeek() {
@@ -158,7 +159,7 @@ async function saveCurrentComment() {
     await setComment(u.student_id, u.problem_id, text);
     (u as any).comment = text;
   } catch (e) {
-    errorMsg.value = String(e);
+    errorMsg.value = humanizeError(e);
   }
 }
 async function refreshImg() {
@@ -167,7 +168,7 @@ async function refreshImg() {
     const path = shownImage.value;
     await showImg(isRealImage(path) ? path : null);
   } catch (e) {
-    errorMsg.value = String(e);
+    errorMsg.value = humanizeError(e);
   }
 }
 function onSelectProblem(n: number) {
@@ -216,7 +217,7 @@ async function applyEffect(eff: GradeEffect) {
       case "none": break;
     }
   } catch (e) {
-    errorMsg.value = String(e);
+    errorMsg.value = humanizeError(e);
   }
 }
 
@@ -373,7 +374,7 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
       </span>
     </header>
     <n-alert v-if="errorMsg" type="error" :title="errorMsg" closable @close="errorMsg = ''" />
-    <p v-if="!problems.length">本场还没设置题目——先到"考试设置"用"生成题目"（填题数 + 每题满分）建题，才能判分。</p>
+    <p v-if="!problems.length">本场还没有题目。请到「考试设置」点「＋ 添加一题」，为每题设好满分后再回来判分。</p>
     <p v-else>本题队列为空：还没有卷子。先在"考试设置"导入 PDF/图片，并（PDF 会自动标注）在"标注"确认。</p>
   </section>
 </template>

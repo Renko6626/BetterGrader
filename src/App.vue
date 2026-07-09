@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref } from "vue";
-import { NConfigProvider, darkTheme } from "naive-ui";
+import { NConfigProvider, NDialogProvider, NMessageProvider, darkTheme } from "naive-ui";
 import SetupView from "./views/SetupView.vue";
 import LabelView from "./views/LabelView.vue";
 import GradeView from "./views/GradeView.vue";
@@ -10,6 +10,8 @@ const route = ref<"setup" | "label" | "grade" | "export">("setup");
 
 <template>
   <n-config-provider :theme="darkTheme" class="app-shell">
+   <n-dialog-provider>
+    <n-message-provider>
     <nav class="topnav">
       <span class="brand">阅卷辅助器</span>
       <button :class="{ on: route === 'setup' }" @click="route = 'setup'"><i>1</i>考试设置</button>
@@ -23,6 +25,8 @@ const route = ref<"setup" | "label" | "grade" | "export">("setup");
       <GradeView v-else-if="route === 'grade'" />
       <ExportView v-else-if="route === 'export'" />
     </main>
+    </n-message-provider>
+   </n-dialog-provider>
   </n-config-provider>
 </template>
 

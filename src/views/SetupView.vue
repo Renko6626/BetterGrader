@@ -9,11 +9,13 @@ import {
   importRosterCsv,
 } from "../api";
 import type { Problem, Preset, Student, ExamInfo } from "../types";
-import { NButton, NCard, NDataTable, NAlert, NSpace, NInputNumber, NProgress } from "naive-ui";
+import { NButton, NCard, NDataTable, NAlert, NSpace, NInputNumber, NProgress, NModal, NInput, useDialog } from "naive-ui";
 import type { DataTableColumns } from "naive-ui";
 import { usePdf } from "../composables/usePdf";
+import { humanizeError } from "../errors";
 
 const { renderToJpegs } = usePdf();
+const dialog = useDialog();
 
 const exam = ref<ExamInfo | null>(null);
 const problems = ref<Problem[]>([]);
@@ -27,6 +29,8 @@ const importing = ref(false);
 const prog = ref<{ label: string; done: number; total: number } | null>(null);
 const progPct = computed(() =>
   prog.value && prog.value.total > 0 ? Math.round(prog.value.done / prog.value.total * 100) : 0);
+// 长任务进行中：禁用同视图其它写操作，避免并发打同一个库
+const busy = computed(() => importing.value || prog.value !== null);
 // 让出一帧给浏览器重绘，否则重活循环里进度条不会动（看着像卡死）
 const paintTick = () => new Promise<void>((r) => setTimeout(r, 0));
 
@@ -62,12 +66,12 @@ async function doAddPreset(pid: number) {
     await addPreset(pid, d.slot, d.label.trim(), Math.floor(d.points ?? 0));
     d.label = ""; d.points = 0;
     await refresh();
-  } catch (e) { errorMsg.value = String(e); }
+  } catch (e) { errorMsg.value = humanizeError(e); }
 }
 async function doDeletePreset(presetId: number) {
   errorMsg.value = "";
   try { await deletePreset(presetId); await refresh(); }
-  catch (e) { errorMsg.value = String(e); }
+  catch (e) { errorMsg.value = humanizeError(e); }
 }
 
 async function pickDir(): Promise<string | null> {
@@ -80,7 +84,7 @@ async function doDemo() { await withDir(seedDemoExam); }
 async function withDir(fn: (dir: string) => Promise<number>) {
   errorMsg.value = "";
   try { const dir = await pickDir(); if (!dir) return; await fn(dir); await refresh(); }
-  catch (e) { errorMsg.value = String(e); }
+  catch (e) { errorMsg.value = humanizeError(e); }
 }
 async function doIngest() {
   errorMsg.value = ""; ingestMsg.value = "";
@@ -96,7 +100,7 @@ async function doIngest() {
     ingestMsg.value = n > 0
       ? `已导入 ${n} 张图（去"标注"页开始标注）`
       : `没有新增：这些图之前已导入过（按内容去重，不会重复）`;
-  } catch (e) { errorMsg.value = String(e); }
+  } catch (e) { errorMsg.value = humanizeError(e); }
   finally { unlisten(); prog.value = null; }
 }
 async function doImportPdfs() {
@@ -128,36 +132,42 @@ async function doImportPdfs() {
       ? `完成：导入 ${done} 份；失败 ${failed.length} 份（${failed.join("、")}）——可重试这些文件`
       : `完成：导入 ${done} 份 PDF（去"判分"直接开批；页数不符的在"标注"确认总表里修）`;
     await refresh();
-  } catch (e) { errorMsg.value = String(e); } finally { importing.value = false; prog.value = null; }
+  } catch (e) { errorMsg.value = humanizeError(e); } finally { importing.value = false; prog.value = null; }
 }
 async function addOneProblem() {
   errorMsg.value = "";
   const next = problems.value.reduce((m, p) => Math.max(m, p.number), 0) + 1;
   try { await addProblem(next, `题${next}`, 10); await refresh(); } // 默认满分 10，行内再改
-  catch (e) { errorMsg.value = String(e); }
+  catch (e) { errorMsg.value = humanizeError(e); }
 }
 async function onEditMax(problemId: number, val: number | null) {
   if (val == null || val < 0) return;
   errorMsg.value = "";
   try { await setProblemMax(problemId, Math.floor(val)); await refresh(); }
-  catch (e) { errorMsg.value = String(e); }
+  catch (e) { errorMsg.value = humanizeError(e); }
 }
 async function onEditRubric(p: Problem) {
   errorMsg.value = "";
   try { await setProblemRubric(p.id, p.rubric ?? ""); }
-  catch (e) { errorMsg.value = String(e); }
+  catch (e) { errorMsg.value = humanizeError(e); }
 }
 async function doDeleteProblem(id: number) {
-  if (window.confirm("删除该题及其档位/已打分数？")) {
-    errorMsg.value = "";
-    try { await deleteProblem(id); await refresh(); }
-    catch (e) { errorMsg.value = String(e); }
-  }
+  const p = problems.value.find(x => x.id === id);
+  dialog.warning({
+    title: "删除题目",
+    content: `删除「题${p?.number ?? ""}」将一并删除其判分档位与已判分数，无法撤销。确定？`,
+    positiveText: "删除", negativeText: "取消",
+    onPositiveClick: async () => {
+      errorMsg.value = "";
+      try { await deleteProblem(id); await refresh(); }
+      catch (e) { errorMsg.value = humanizeError(e); }
+    },
+  });
 }
 async function doImportRoster() {
   errorMsg.value = ""; ingestMsg.value = "";
   try {
-    const path = await open({ multiple: false, title: "选择花名册 CSV（第一列姓名、第二列学号）",
+    const path = await open({ multiple: false, title: "选择花名册 CSV（第一列姓名、第二列考号）",
       filters: [{ name: "CSV", extensions: ["csv", "txt"] }] });
     if (typeof path !== "string") return;
     const n = await importRosterCsv(path);
@@ -165,22 +175,31 @@ async function doImportRoster() {
       ? `已从 CSV 导入 ${n} 名学生（追加到花名册）`
       : `没有新增：CSV 里的学生都已在花名册中（按姓名+学号去重）`;
     await refresh();
-  } catch (e) { errorMsg.value = String(e); }
+  } catch (e) { errorMsg.value = humanizeError(e); }
 }
-async function doRename(sid: number, cur: string) {
-  const name = window.prompt("改名", cur);
-  if (name && name.trim()) {
-    errorMsg.value = "";
-    try { await renameStudent(sid, name.trim()); await refresh(); }
-    catch (e) { errorMsg.value = String(e); }
-  }
+// 改名走 naive 弹窗(替代原生 window.prompt)
+const renaming = ref<{ id: number; name: string } | null>(null);
+function doRename(sid: number, cur: string) { renaming.value = { id: sid, name: cur }; }
+async function confirmRename() {
+  const r = renaming.value;
+  if (!r || !r.name.trim()) { renaming.value = null; return; }
+  errorMsg.value = "";
+  try { await renameStudent(r.id, r.name.trim()); await refresh(); }
+  catch (e) { errorMsg.value = humanizeError(e); }
+  finally { renaming.value = null; }
 }
 async function doDelete(sid: number) {
-  if (window.confirm("删除该学生及其所有页/分？")) {
-    errorMsg.value = "";
-    try { await deleteStudent(sid); await refresh(); }
-    catch (e) { errorMsg.value = String(e); }
-  }
+  const s = students.value.find(x => x.id === sid);
+  dialog.warning({
+    title: "删除学生",
+    content: `删除「${s?.name ?? ""}」将一并删除其所有页与分数，无法撤销。确定？`,
+    positiveText: "删除", negativeText: "取消",
+    onPositiveClick: async () => {
+      errorMsg.value = "";
+      try { await deleteStudent(sid); await refresh(); }
+      catch (e) { errorMsg.value = humanizeError(e); }
+    },
+  });
 }
 const studentColumns: DataTableColumns<Student> = [
   { title: "姓名", key: "name" },
@@ -200,12 +219,12 @@ onMounted(refresh);
 <template>
   <section style="padding:16px; font-family:ui-monospace,monospace;">
     <n-space>
-      <n-button @click="doNew">新建考试…</n-button>
+      <n-button type="primary" @click="doNew">新建考试…</n-button>
       <n-button @click="doOpen">打开考试…</n-button>
-      <n-button type="primary" @click="doDemo">新建演示考试…</n-button>
-      <n-button v-if="exam" @click="doIngest">导入图片文件夹…</n-button>
-      <n-button v-if="exam" :loading="importing" :disabled="importing" @click="doImportPdfs">导入 PDF 文件夹…</n-button>
-      <n-button v-if="exam" @click="doImportRoster">从 CSV 导入花名册…</n-button>
+      <n-button tertiary @click="doDemo">加载演示数据</n-button>
+      <n-button v-if="exam" :disabled="busy" @click="doIngest">导入图片文件夹…</n-button>
+      <n-button v-if="exam" :loading="importing" :disabled="busy" @click="doImportPdfs">导入 PDF 文件夹…</n-button>
+      <n-button v-if="exam" :disabled="busy" @click="doImportRoster">从 CSV 导入花名册…</n-button>
     </n-space>
     <n-alert v-if="errorMsg" type="error" :title="errorMsg" closable @close="errorMsg=''" style="margin-top:8px" />
     <n-alert v-if="ingestMsg" type="success" :title="ingestMsg" closable @close="ingestMsg=''" style="margin-top:8px" />
@@ -264,6 +283,15 @@ onMounted(refresh);
     <n-card v-if="students.length" :title="`花名册（${students.length} 人）`">
       <n-data-table :columns="studentColumns" :data="students" :row-key="(row) => row.id" />
     </n-card>
+
+    <!-- 改名弹窗（替代原生 window.prompt） -->
+    <n-modal :show="renaming !== null" preset="dialog" title="修改姓名"
+             positive-text="保存" negative-text="取消"
+             @positive-click="confirmRename" @negative-click="renaming = null"
+             @update:show="(v: boolean) => { if (!v) renaming = null; }">
+      <n-input v-if="renaming" v-model:value="renaming.name" placeholder="姓名"
+               @keyup.enter="confirmRename" />
+    </n-modal>
   </section>
 </template>
 
