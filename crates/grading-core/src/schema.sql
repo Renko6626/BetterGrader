@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS problem (
   rubric TEXT,                       -- 本题评分标准/参考答案（Markdown，可空）
   UNIQUE(exam_id, number)
 );
--- 每题快捷档位，绑数字键槽 1..9；满分/零分/空白 自动预置
+-- 每题快捷档位，绑判分键槽 0..9（slot 0 = 反引号 ` 键）；满分@9/零分@0 自动预置
 CREATE TABLE IF NOT EXISTS score_preset (
   id INTEGER PRIMARY KEY, problem_id INTEGER NOT NULL,
   slot INTEGER NOT NULL, label TEXT NOT NULL, points INTEGER NOT NULL,

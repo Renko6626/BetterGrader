@@ -11,6 +11,11 @@ describe("爽批态", () => {
     expect(r.effect).toEqual({ kind: "setPreset", slot: 3 });
     expect(r.state.index).toBe(0); // 不动
   });
+  it("反引号 ` = slot 0（默认零分），不前进；与数字 0=手动区分", () => {
+    expect(reduceGradeKey(s0, "`", ctx).effect).toEqual({ kind: "setPreset", slot: 0 });
+    expect(reduceGradeKey(s0, "`", ctx).state.index).toBe(0);
+    expect(reduceGradeKey(s0, "0", ctx).state.manual).toBe(true); // 数字 0 仍是手动，不落 slot
+  });
   it("Enter / → 提交并前进到下一学生", () => {
     const r = reduceGradeKey(s0, "Enter", ctx);
     expect(r.effect).toEqual({ kind: "advance" });

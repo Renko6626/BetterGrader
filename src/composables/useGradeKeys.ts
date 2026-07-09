@@ -48,6 +48,8 @@ export function reduceGradeKey(state: GradeState, key: string, ctx: GradeCtx): G
     return none(state);
   }
   // 3) 爽批态
+  // 档位键：反引号 ` = slot 0（高频"零分"放左手小指），数字 1-9 = slot 1..9
+  if (key === "`") return { state, effect: { kind: "setPreset", slot: 0 } };
   if (/^[1-9]$/.test(key)) return { state, effect: { kind: "setPreset", slot: parseInt(key, 10) } };
   if (key === "m" || key === "M" || key === "0") return none({ ...state, manual: true, buffer: "" });
   // ←/→ 或 Enter/Backspace：上/下一份（换人）

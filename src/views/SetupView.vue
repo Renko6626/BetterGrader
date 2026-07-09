@@ -38,8 +38,10 @@ const paintTick = () => new Promise<void>((r) => setTimeout(r, 0));
 const draft = reactive<Record<number, { slot: number; label: string; points: number }>>({});
 function freeSlots(pid: number): number[] {
   const used = new Set((presetsByProblem.value[pid] ?? []).map(pr => pr.slot));
-  return [1, 2, 3, 4, 5, 6, 7, 8, 9].filter(s => !used.has(s));
+  return [0, 1, 2, 3, 4, 5, 6, 7, 8, 9].filter(s => !used.has(s)); // slot 0 = 反引号 ` 键
 }
+// 档位键的显示：slot 0 显示为反引号 `（键盘 1 左边），其余显示数字
+const slotKey = (s: number) => (s === 0 ? "`" : String(s));
 function ensureDrafts() {
   for (const p of problems.value) {
     const free = freeSlots(p.id);
@@ -60,7 +62,7 @@ async function refresh() {
 async function doAddPreset(pid: number) {
   const d = draft[pid];
   if (!d || !d.label.trim()) { errorMsg.value = "档位名称不能为空"; return; }
-  if (!Number.isInteger(d.slot) || d.slot < 1 || d.slot > 9) { errorMsg.value = "判分键仅限 1-9"; return; }
+  if (!Number.isInteger(d.slot) || d.slot < 0 || d.slot > 9) { errorMsg.value = "判分键仅限 ` 与 1-9"; return; }
   errorMsg.value = "";
   try {
     await addPreset(pid, d.slot, d.label.trim(), Math.floor(d.points ?? 0));
@@ -258,13 +260,13 @@ onMounted(refresh);
         <div class="preset-edit">
           <span class="pl">判分键：</span>
           <span v-for="pr in presetsByProblem[p.id]" :key="pr.id" class="chip">
-            <b>{{ pr.slot }}</b> {{ pr.label }}={{ pr.points }}
+            <b>{{ slotKey(pr.slot) }}</b> {{ pr.label }}={{ pr.points }}
             <a class="x" title="删除该档位" @click="doDeletePreset(pr.id)">×</a>
           </span>
           <span v-if="draft[p.id] && freeSlots(p.id).length" class="addp">
             ＋键
             <select v-model.number="draft[p.id].slot" class="sel">
-              <option v-for="s in freeSlots(p.id)" :key="s" :value="s">{{ s }}</option>
+              <option v-for="s in freeSlots(p.id)" :key="s" :value="s">{{ slotKey(s) }}</option>
             </select>
             <input v-model="draft[p.id].label" placeholder="名称（如 前两问）" class="il" />
             <input type="number" v-model.number="draft[p.id].points" placeholder="分" class="ip" />

@@ -15,10 +15,10 @@ pub fn add_problem(db: &Db, exam_id: i64, number: i64, title: &str, max_score: i
         (exam_id, number, title, max_score),
     )?;
     let pid = tx.last_insert_rowid();
-    // 自动预置三个档位：满分/零分/空白（内联进本事务，勿调 add_preset）
-    tx.execute("INSERT INTO score_preset(problem_id, slot, label, points) VALUES(?1,?2,?3,?4)", (pid, 7, "满分", max_score))?;
-    tx.execute("INSERT INTO score_preset(problem_id, slot, label, points) VALUES(?1,?2,?3,?4)", (pid, 8, "零分", 0))?;
-    tx.execute("INSERT INTO score_preset(problem_id, slot, label, points) VALUES(?1,?2,?3,?4)", (pid, 9, "空白", 0))?;
+    // 自动预置两个档位（内联进本事务，勿调 add_preset）：满分→9、零分→0(反引号 ` 键)。
+    // 高频"零分"放左手小指最顺的 ` 上。其余档位(如部分分)用户按需自行添加。
+    tx.execute("INSERT INTO score_preset(problem_id, slot, label, points) VALUES(?1,?2,?3,?4)", (pid, 9, "满分", max_score))?;
+    tx.execute("INSERT INTO score_preset(problem_id, slot, label, points) VALUES(?1,?2,?3,?4)", (pid, 0, "零分", 0))?;
     tx.commit()?;
     Ok(pid)
 }
@@ -153,16 +153,15 @@ mod tests {
     use crate::Db;
 
     #[test]
-    fn add_problem_auto_seeds_three_presets() {
+    fn add_problem_auto_seeds_two_presets() {
         let db = Db::open_in_memory().unwrap();
         let exam = create_exam(&db, "假物理", "2026-07-02").unwrap();
         let p = add_problem(&db, exam, 3, "力学大题", 20).unwrap();
         let presets = list_presets(&db, p).unwrap();
-        // 满分=max=20、零分=0、空白=0 三个自动档位
-        assert_eq!(presets.len(), 3);
-        assert!(presets.iter().any(|x| x.label == "满分" && x.points == 20));
-        assert!(presets.iter().any(|x| x.label == "零分" && x.points == 0));
-        assert!(presets.iter().any(|x| x.label == "空白" && x.points == 0));
+        // 满分@9=max=20、零分@0(反引号)=0 两个自动档位（不再有冗余的"空白"）
+        assert_eq!(presets.len(), 2);
+        assert!(presets.iter().any(|x| x.label == "满分" && x.points == 20 && x.slot == 9));
+        assert!(presets.iter().any(|x| x.label == "零分" && x.points == 0 && x.slot == 0));
     }
 
     #[test]
@@ -171,7 +170,7 @@ mod tests {
         let exam = create_exam(&db, "假物理", "2026-07-02").unwrap();
         let p = add_problem(&db, exam, 3, "力学大题", 20).unwrap();
         add_preset(&db, p, 2, "前两问", 9).unwrap();
-        assert_eq!(list_presets(&db, p).unwrap().len(), 4);
+        assert_eq!(list_presets(&db, p).unwrap().len(), 3); // 满分+零分 两个自动 + 1 自定义
         let probs = list_problems(&db, exam).unwrap();
         assert_eq!(probs, vec![Problem { id: p, number: 3, title: "力学大题".into(), max_score: 20, rubric: None }]);
     }

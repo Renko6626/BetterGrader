@@ -321,7 +321,7 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
         <p v-if="gs.manual" class="manual">Enter 确认 · Esc 取消</p>
         <div class="divider"></div>
         <ul class="preset-list">
-          <li v-for="p in presets" :key="p.id"><b>{{ p.slot }}</b> {{ p.label }} <span class="pt">{{ p.points }}</span></li>
+          <li v-for="p in presets" :key="p.id"><b>{{ p.slot === 0 ? "`" : p.slot }}</b> {{ p.label }} <span class="pt">{{ p.points }}</span></li>
         </ul>
         <div class="comment" :class="{ focused: commentFocused }">
           <label>评语<span v-if="commentFocused" class="paused">· 评分键已暂停，Esc 恢复</span></label>
@@ -336,7 +336,7 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
       <div v-if="showHelp" class="help-pop" @click.self="showHelp = false">
         <div class="help-card">
           <div class="hc-head"><span>快捷键</span><button title="关闭（Esc）" @click="showHelp = false">×</button></div>
-          <div><kbd>1–9</kbd> 档位给分　<kbd>M</kbd>/<kbd>0</kbd> 手动输入</div>
+          <div><kbd>`</kbd> <kbd>1–9</kbd> 档位给分（<kbd>`</kbd>默认零分）　<kbd>M</kbd>/<kbd>0</kbd> 手动输入</div>
           <div><kbd>→</kbd> 下一份　<kbd>←</kbd> 上一份（<kbd>Enter</kbd> 也下一份，<kbd>⌫</kbd> 也上一份）</div>
           <div><kbd>↑</kbd> 上一页　<kbd>↓</kbd> 下一页　<kbd>Esc</kbd> 回本题页</div>
           <div><kbd>F</kbd> 存疑　<kbd>J</kbd> 下一存疑　<kbd>G</kbd> 队列总览</div>
