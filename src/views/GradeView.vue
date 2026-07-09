@@ -237,8 +237,9 @@ function onKey(e: KeyboardEvent) {
     e.preventDefault(); showHelp.value = false; showRubric.value = false; return;
   }
   if (e.key === "Tab") { e.preventDefault(); sidebarCollapsed.value = !sidebarCollapsed.value; return; } // Tab 收起/展开左侧面板（同时避免焦点移入评语框废掉判分键）
-  // 浮层（评分标准/快捷键）开着时，判分键一律不落到 reducer——否则按 1-9/Enter/F 会给浮层背后那份隔空落分
-  if (showHelp.value || showRubric.value) return;
+  // 快捷键浮层(全覆盖)开着时，判分键不落到 reducer，防隔空落分。
+  // 评分标准现在是右侧抽屉(不覆盖卷面)，判分键应穿透——边看标准边给分正是它的用途。
+  if (showHelp.value) return;
   const before = gs.value;
   const r = reduceGradeKey(gs.value, e.key, ctx.value);
   const handled = r.effect.kind !== "none"
@@ -300,7 +301,7 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
       </div>
     </header>
     <n-alert v-if="errorMsg" type="error" :title="errorMsg" closable @close="errorMsg = ''" />
-    <div class="pane">
+    <div class="pane" :class="{ 'sidebar-open': !sidebarCollapsed }">
       <GradeSidebar :collapsed="sidebarCollapsed" :average="average" :dist="dist" :rubric-html="curRubricHtml"
                     :current-bin="curBin" @toggle="sidebarCollapsed = !sidebarCollapsed" />
       <div class="img" @wheel.prevent="onWheel" @mousedown="onImgDown" @mousemove="onImgMove"
@@ -314,6 +315,13 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
           </div>
         </div>
       </div>
+      <!-- 评分标准右侧抽屉（R 开关）：作为 flex 兄弟挤窄卷面，而非覆盖——标准与答案左右并置 -->
+      <aside v-if="showRubric" class="rubric-drawer">
+        <div class="rc-head"><span>题{{ problemNumber }} · 评分标准</span>
+          <button title="关闭（R / Esc）" @click="showRubric = false">×</button></div>
+        <div v-if="curRubricHtml" class="rc-body" v-html="curRubricHtml"></div>
+        <div v-else class="rc-empty">本题还没填评分标准。到「考试设置」→ 本题下面「评分标准」里填（支持 Markdown）。</div>
+      </aside>
       <aside class="panel">
         <div class="phead">
           <h3>题{{ current.problem_number }}<span v-if="curMax !== ''" class="mx">满分 {{ curMax }}</span></h3>
@@ -351,15 +359,6 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
         </div>
       </div>
 
-      <!-- 评分标准浮层（R 开关 / 点背景或 Esc 关） -->
-      <div v-if="showRubric" class="rubric-pop" @click.self="showRubric = false">
-        <div class="rubric-card">
-          <div class="rc-head"><span>题{{ problemNumber }} · 评分标准</span>
-            <button title="关闭（R / Esc）" @click="showRubric = false">×</button></div>
-          <div v-if="curRubricHtml" class="rc-body" v-html="curRubricHtml"></div>
-          <div v-else class="rc-empty">本题还没填评分标准。到「考试设置」→ 本题下面「评分标准」里填（支持 Markdown）。</div>
-        </div>
-      </div>
     </div>
     <!-- 队列总览（G 打开） -->
     <n-modal :show="gs.overview" :close-on-esc="false" :mask-closable="false"
@@ -415,7 +414,9 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
 .picker .jump { background: var(--elevated); border: 1px solid var(--border-accent); color: var(--accent-soft); padding: 2px 10px; cursor: pointer; font-family: inherit; white-space: nowrap; }
 .picker .jump:disabled { opacity: 0.4; cursor: default; }
 .pane { flex: 1; display: flex; min-height: 0; position: relative; }
-.img { flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; cursor: grab; }
+.img { flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; cursor: grab; transition: padding-left .15s ease; }
+/* 左侧分布面板展开时，卷面居中区右移让位，避免被不透明面板遮住左缘 */
+.pane.sidebar-open .img { padding-left: 210px; }
 .img:active { cursor: grabbing; }
 .img img { max-width: 100%; max-height: 100%; transform-origin: center center; user-select: none; will-change: transform; }
 .placeholder { border: 1px dashed var(--border); padding: 40px; text-align: center; color: var(--text-faint); }
@@ -452,12 +453,13 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
 .help-card .dim { color: var(--text-faint); margin-top: 4px; }
 .help-card kbd { background: var(--chip); border: 1px solid var(--border); border-radius: 3px; padding: 0 5px; font-family: inherit; font-size: 11px; color: var(--text); }
 /* 评分标准浮层 */
-.rubric-pop { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.45); display: flex; align-items: center; justify-content: center; z-index: 25; }
-.rubric-card { display: flex; flex-direction: column; width: min(680px, 82%); max-height: 82%; background: var(--elevated); border: 1px solid var(--border); border-radius: 6px; }
+/* 右侧抽屉：flex 兄弟，占固定宽、挤窄卷面而不覆盖；卷面(.img flex:1)自动让位 */
+.rubric-drawer { flex: 0 0 360px; display: flex; flex-direction: column; min-height: 0;
+  background: var(--elevated); border-left: 1px solid var(--border); }
 .rc-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; border-bottom: 1px solid var(--border); color: var(--accent-soft); font-size: 14px; }
 .rc-head button { background: none; border: none; color: var(--text-faint); font-size: 22px; line-height: 1; cursor: pointer; }
 .rc-empty { padding: 24px 16px; color: var(--text-faint); font-size: 13px; }
-.rc-body { padding: 12px 20px 20px; overflow: auto; color: var(--text-body); line-height: 1.7; font-size: 14px; }
+.rc-body { flex: 1; min-height: 0; padding: 12px 20px 20px; overflow: auto; color: var(--text-body); line-height: 1.7; font-size: 14px; }
 .rc-body :deep(h1), .rc-body :deep(h2), .rc-body :deep(h3) { color: #fff; margin: 14px 0 6px; line-height: 1.3; }
 .rc-body :deep(h1) { font-size: 20px; } .rc-body :deep(h2) { font-size: 17px; } .rc-body :deep(h3) { font-size: 15px; }
 .rc-body :deep(ul), .rc-body :deep(ol) { padding-left: 22px; margin: 6px 0; }
