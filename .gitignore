@@ -26,3 +26,6 @@ exams/
 *.swp
 .DS_Store
 Thumbs.db
+
+# ---- AI 协作开发的本地指令(不公开) ----
+CLAUDE.md
