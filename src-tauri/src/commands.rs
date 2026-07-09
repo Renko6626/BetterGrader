@@ -79,6 +79,10 @@ fn with_exam<T>(state: &tauri::State<AppState>, f: impl FnOnce(&OpenExam) -> any
     f(oe).map_err(e)
 }
 
+#[tauri::command] pub fn exam_dir(state: tauri::State<AppState>) -> R<Option<String>> {
+    let guard = state.0.lock().map_err(e)?;
+    Ok(guard.as_ref().map(|oe| oe.dir.to_string_lossy().to_string()))
+}
 #[tauri::command] pub fn list_problems(state: tauri::State<AppState>) -> R<Vec<Problem>> { with_exam(&state, |oe| setup::list_problems(&oe.db, oe.exam_id)) }
 #[tauri::command] pub fn list_presets(state: tauri::State<AppState>, problem_id: i64) -> R<Vec<Preset>> { with_exam(&state, |oe| setup::list_presets(&oe.db, problem_id)) }
 #[tauri::command] pub fn list_students(state: tauri::State<AppState>) -> R<Vec<Student>> { with_exam(&state, |oe| setup::list_students(&oe.db, oe.exam_id)) }

@@ -6,6 +6,7 @@ export const newExam = (dir: string) => invoke<number>("new_exam", { dir });
 export const openExam = (dir: string) => invoke<number>("open_exam", { dir });
 export const seedDemoExam = (dir: string) => invoke<number>("seed_demo_exam", { dir });
 export const currentExam = () => invoke<ExamInfo | null>("current_exam");
+export const examDir = () => invoke<string | null>("exam_dir");
 
 // 作用于当前考试（不再传 examId）
 export const listProblems = () => invoke<Problem[]>("list_problems");

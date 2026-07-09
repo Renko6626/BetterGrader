@@ -3,7 +3,7 @@ import { ref, reactive, computed, onMounted, h } from "vue";
 import { open } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
 import {
-  newExam, openExam, seedDemoExam, currentExam, listProblems, listPresets, listStudents, ingestFolder,
+  newExam, openExam, seedDemoExam, currentExam, examDir, listProblems, listPresets, listStudents, ingestFolder,
   listPdfs, readPdf, savePdfPage, addStudent, renameStudent, deleteStudent,
   addProblem, deleteProblem, setProblemMax, addPreset, deletePreset, setProblemRubric,
   importRosterCsv,
@@ -18,9 +18,11 @@ const { renderToJpegs } = usePdf();
 const dialog = useDialog();
 
 const exam = ref<ExamInfo | null>(null);
+const examDirPath = ref<string | null>(null); // 当前考试目录，状态头显示
 const problems = ref<Problem[]>([]);
 const presetsByProblem = ref<Record<number, Preset[]>>({});
 const students = ref<Student[]>([]);
+const adding = ref<{ name: string; examNumber: string } | null>(null); // 手动添加学生弹窗
 const errorMsg = ref("");
 const ingestMsg = ref("");
 const pdfMsg = ref("");
@@ -51,6 +53,7 @@ function ensureDrafts() {
 }
 async function refresh() {
   exam.value = await currentExam();
+  examDirPath.value = await examDir();
   if (!exam.value) { problems.value = []; students.value = []; presetsByProblem.value = {}; return; }
   problems.value = await listProblems();
   const np: Record<number, Preset[]> = {};
@@ -179,6 +182,16 @@ async function doImportRoster() {
     await refresh();
   } catch (e) { errorMsg.value = humanizeError(e); }
 }
+// 手动添加学生(小班直接敲名字，不必非得 CSV)
+function startAddStudent() { adding.value = { name: "", examNumber: "" }; }
+async function confirmAddStudent() {
+  const a = adding.value;
+  if (!a || !a.name.trim()) { adding.value = null; return; }
+  errorMsg.value = "";
+  try { await addStudent(a.name.trim(), a.examNumber.trim() || null); await refresh(); }
+  catch (e) { errorMsg.value = humanizeError(e); }
+  finally { adding.value = null; }
+}
 // 改名走 naive 弹窗(替代原生 window.prompt)
 const renaming = ref<{ id: number; name: string } | null>(null);
 function doRename(sid: number, cur: string) { renaming.value = { id: sid, name: cur }; }
@@ -219,15 +232,31 @@ onMounted(refresh);
 </script>
 
 <template>
-  <section style="padding:16px; font-family:ui-monospace,monospace;">
-    <n-space>
-      <n-button type="primary" @click="doNew">新建考试…</n-button>
-      <n-button @click="doOpen">打开考试…</n-button>
-      <n-button tertiary @click="doDemo">加载演示数据</n-button>
-      <n-button v-if="exam" :disabled="busy" @click="doIngest">导入图片文件夹…</n-button>
-      <n-button v-if="exam" :loading="importing" :disabled="busy" @click="doImportPdfs">导入 PDF 文件夹…</n-button>
-      <n-button v-if="exam" :disabled="busy" @click="doImportRoster">从 CSV 导入花名册…</n-button>
-    </n-space>
+  <section class="setup">
+    <!-- 当前考试状态头 -->
+    <div class="exam-head">
+      <template v-if="exam">
+        <div class="ex-info">
+          <div class="ex-name">📁 {{ exam.name }}</div>
+          <div v-if="examDirPath" class="ex-path" :title="examDirPath">{{ examDirPath }}</div>
+        </div>
+        <n-space>
+          <n-button size="small" @click="doOpen">切换考试…</n-button>
+          <n-button size="small" tertiary @click="doNew">新建…</n-button>
+        </n-space>
+      </template>
+      <template v-else>
+        <div class="ex-info">
+          <div class="ex-name muted">未打开考试</div>
+          <div class="hint">选一个空目录开始——新建会在里面生成 exam.db 与 images/；一个目录 = 一场考试，可整体拷走归档。</div>
+        </div>
+        <n-space>
+          <n-button type="primary" @click="doNew">新建考试…</n-button>
+          <n-button @click="doOpen">打开考试…</n-button>
+          <n-button tertiary @click="doDemo">加载演示数据</n-button>
+        </n-space>
+      </template>
+    </div>
     <n-alert v-if="errorMsg" type="error" :title="errorMsg" closable @close="errorMsg=''" style="margin-top:8px" />
     <n-alert v-if="ingestMsg" type="success" :title="ingestMsg" closable @close="ingestMsg=''" style="margin-top:8px" />
     <n-alert v-if="pdfMsg" type="success" :title="pdfMsg" closable @close="pdfMsg=''" style="margin-top:8px" />
@@ -242,13 +271,12 @@ onMounted(refresh);
         :processing="prog.done < 0"
         :indicator-placement="'inside'" />
     </div>
-    <p v-if="exam">当前：{{ exam.name }}</p>
-    <p v-else>未打开考试。点上面按钮选一个目录。</p>
-
-    <div v-if="exam" class="problems">
-      <h3>题目设置</h3>
-      <p class="hint">每题各自填满分；判分键（1–9）可自定义档位。判分前必须先建题——PDF/图片导入<b>不会</b>自动建题。</p>
-      <div v-for="p in problems" :key="p.id" class="prob">
+    <!-- 骨架：题目 + 花名册 并排；导入卷面 其下 -->
+    <div v-if="exam" class="cols">
+      <section class="card">
+        <h3>① 题目与判分档位</h3>
+        <p class="hint">每题各自填满分；判分键 <code>`</code> 与 1–9 可自定义档位。<b>判分前必须先建题</b>——导入不会自动建题。</p>
+        <div v-for="p in problems" :key="p.id" class="prob">
         <div class="prow">
           <b class="pn">题{{ p.number }}</b>
           <span>满分
@@ -279,12 +307,40 @@ onMounted(refresh);
             placeholder="本题评分标准/参考答案（Markdown，可选）——判分时按 R 呼出对照"></textarea>
         </div>
       </div>
-      <p v-if="!problems.length" class="hint">还没有题目。</p>
-      <n-button size="small" @click="addOneProblem" style="margin-top:8px">＋ 添加一题</n-button>
+        <p v-if="!problems.length" class="hint empty">还没有题目。点下面按钮，为每题填好满分。</p>
+        <n-button size="small" @click="addOneProblem" style="margin-top:8px">＋ 添加一题</n-button>
+      </section>
+
+      <section class="card">
+        <h3>② 花名册 <span class="sub">{{ students.length }} 人 · 到场清单/缺考检测</span></h3>
+        <n-space style="margin-bottom:8px">
+          <n-button size="small" :disabled="busy" @click="doImportRoster">从 CSV 导入…</n-button>
+          <n-button size="small" @click="startAddStudent">＋ 手动添加</n-button>
+        </n-space>
+        <p v-if="!students.length" class="hint empty">还没有学生。从 CSV 导入（第一列姓名、第二列考号），或手动添加。花名册也是缺考检测的到场清单。</p>
+        <n-data-table v-else :columns="studentColumns" :data="students" :row-key="(row) => row.id" size="small" />
+      </section>
     </div>
-    <n-card v-if="students.length" :title="`花名册（${students.length} 人）`">
-      <n-data-table :columns="studentColumns" :data="students" :row-key="(row) => row.id" />
-    </n-card>
+
+    <section v-if="exam" class="card wide">
+      <h3>③ 导入卷面</h3>
+      <p class="hint">图片文件夹 → 去「标注」逐页指认；PDF 文件夹（每份 = 一个考生，首页姓名页）→ 自动标注，可直接判分。</p>
+      <n-space>
+        <n-button :disabled="busy" @click="doIngest">导入图片文件夹…</n-button>
+        <n-button :loading="importing" :disabled="busy" @click="doImportPdfs">导入 PDF 文件夹…</n-button>
+      </n-space>
+    </section>
+
+    <!-- 手动添加学生弹窗 -->
+    <n-modal :show="adding !== null" preset="dialog" title="添加学生"
+             positive-text="添加" negative-text="取消"
+             @positive-click="confirmAddStudent" @negative-click="adding = null"
+             @update:show="(v: boolean) => { if (!v) adding = null; }">
+      <div v-if="adding" style="display:flex; flex-direction:column; gap:8px">
+        <n-input v-model:value="adding.name" placeholder="姓名" @keyup.enter="confirmAddStudent" />
+        <n-input v-model:value="adding.examNumber" placeholder="考号（可选）" />
+      </div>
+    </n-modal>
 
     <!-- 改名弹窗（替代原生 window.prompt） -->
     <n-modal :show="renaming !== null" preset="dialog" title="修改姓名"
@@ -298,11 +354,27 @@ onMounted(refresh);
 </template>
 
 <style scoped>
+.setup { padding: 16px; font-family: ui-monospace, monospace; }
 .prog-box { margin-top: 10px; padding: 10px; border: 1px solid var(--border-accent); background: var(--elevated); }
 .prog-label { display: block; font-size: 13px; color: var(--accent-soft); margin-bottom: 6px; }
-.problems { margin: 12px 0; padding: 10px; border: 1px solid var(--border); }
-.problems h3 { margin: 0 0 6px; }
+/* 考试状态头 */
+.exam-head { display: flex; align-items: center; justify-content: space-between; gap: 16px;
+  padding: 12px 14px; background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-lg); }
+.exam-head .ex-info { min-width: 0; }
+.exam-head .ex-name { font-size: 16px; color: var(--text); }
+.exam-head .ex-name.muted { color: var(--text-dim); }
+.exam-head .ex-path { font-size: 12px; color: var(--text-faint); margin-top: 2px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 52vw; }
+/* 分区卡片：题目/花名册并排，导入卷面整宽 */
+.cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px; }
+@media (max-width: 900px) { .cols { grid-template-columns: 1fr; } }
+.card { padding: 14px; background: var(--panel); border: 1px solid var(--border); border-radius: var(--r-lg); min-width: 0; }
+.card.wide { margin-top: 16px; }
+.card h3 { margin: 0 0 6px; font-size: 15px; }
+.card h3 .sub { font-size: 12px; color: var(--text-dim); font-weight: normal; margin-left: 8px; }
 .hint { color: var(--text-dim); font-size: 12px; margin: 4px 0; }
+.hint.empty { padding: 10px 0; }
+.hint code { background: var(--chip); border-radius: var(--r); padding: 0 4px; }
 .prob { border-top: 1px solid var(--border-subtle); padding: 8px 0; }
 .prow { display: flex; align-items: center; gap: 14px; }
 .prow .pn { min-width: 3em; }
