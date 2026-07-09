@@ -7,6 +7,7 @@ const props = defineProps<{
   average: number | null;
   dist: Dist;
   rubricHtml: string;   // 已渲染的评分标准 HTML；面板下半部截断预览，全文按 R
+  currentBin: number | null;  // 当前份的分落在哪个柱，高亮它
 }>();
 defineEmits<{ (e: "toggle"): void }>();
 // 第 i 柱对应的分数（每分一柱时=i，否则按比例换算回分数）
@@ -23,9 +24,9 @@ const binScore = (i: number) =>
         <span class="sub">已评 {{ dist.total }} 份</span>
       </div>
       <div v-if="dist.total" class="dist">
-        <div class="dh">判分分布</div>
+        <div class="dh"><span>判分分布</span><span class="pk">峰 {{ dist.peak }} 人</span></div>
         <div class="bars">
-          <div v-for="(c, i) in dist.bins" :key="i" class="bar"
+          <div v-for="(c, i) in dist.bins" :key="i" class="bar" :class="{ cur: i === currentBin }"
                :style="{ height: (c / dist.peak * 100) + '%' }"
                :title="`${binScore(i)} 分：${c} 人`"></div>
         </div>
@@ -57,9 +58,12 @@ const binScore = (i: number) =>
 .avg b { color: var(--ok); font-size: 22px; }
 .avg .slash { color: var(--text-dim); }
 .avg .sub { display: block; color: var(--text-faint); font-size: 12px; margin-top: 2px; }
-.dist .dh { font-size: 12px; color: var(--text-dim); margin-bottom: 4px; }
+.dist .dh { font-size: 12px; color: var(--text-dim); margin-bottom: 4px; display: flex; justify-content: space-between; }
+.dist .dh .pk { color: var(--text-faint); }
 .dist .bars { display: flex; align-items: flex-end; gap: 2px; height: 100px; border-bottom: 1px solid var(--border); }
 .dist .bar { flex: 1; background: var(--accent); min-width: 3px; }
+/* 高亮当前份所在柱：一眼看到"我刚给的分落在分布哪里" */
+.dist .bar.cur { background: var(--ok); box-shadow: 0 0 0 1px var(--ok); }
 .dist .axis { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-faint); margin-top: 2px; }
 .empty { color: var(--text-faint); font-size: 12px; }
 /* 下半部评分标准：填满剩余高度，y 方向硬截断 + 底部渐隐 */

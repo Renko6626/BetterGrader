@@ -93,6 +93,13 @@ const average = computed(() => {
   }
   return n ? sum / n : null;
 });
+// 当前份的分落在直方图哪个柱（用同一分箱规则），供侧栏高亮"我刚给的分在分布何处"
+const curBin = computed<number | null>(() => {
+  const u = current.value; const d = dist.value;
+  if (!u || u.total == null) return null;
+  const t = Math.max(0, Math.min(d.max, u.total));
+  return d.perPoint ? t : Math.min(d.binCount - 1, Math.round((t / (d.max || 1)) * (d.binCount - 1)));
+});
 const sidebarCollapsed = ref(false); // 左侧悬浮面板收起态（Tab 切换）
 const showHelp = ref(false);         // 快捷键浮层（? 键 / 右栏 ? 按钮）
 const showRubric = ref(false);       // 评分标准浮层（R 键）
@@ -295,7 +302,7 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
     <n-alert v-if="errorMsg" type="error" :title="errorMsg" closable @close="errorMsg = ''" />
     <div class="pane">
       <GradeSidebar :collapsed="sidebarCollapsed" :average="average" :dist="dist" :rubric-html="curRubricHtml"
-                    @toggle="sidebarCollapsed = !sidebarCollapsed" />
+                    :current-bin="curBin" @toggle="sidebarCollapsed = !sidebarCollapsed" />
       <div class="img" @wheel.prevent="onWheel" @mousedown="onImgDown" @mousemove="onImgMove"
            @mouseup="onImgUp" @mouseleave="onImgUp" @dblclick="resetZoom">
         <img v-if="imgUrl" :src="imgUrl" alt="答卷" draggable="false"
@@ -313,18 +320,20 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
           <button class="help-btn" title="快捷键（? 键）" @click="showHelp = !showHelp">?</button>
         </div>
         <div class="score">
-          <span class="sc-val">{{ current.total ?? "—" }}</span>
-          <span class="sc-state" :class="current.state">{{ stateLabel(current.state) }}</span>
+          <!-- 手动输入时，正在敲的数字占据大字焦点(而非旧分)，带光标暗示未确认 -->
+          <span class="sc-val" :class="{ typing: gs.manual }">{{ gs.manual ? gs.buffer : (current.total ?? "—") }}<i v-if="gs.manual" class="caret"></i></span>
+          <span class="sc-state" :class="gs.manual ? 'typing' : current.state">{{ gs.manual ? "手动" : stateLabel(current.state) }}</span>
         </div>
-        <p v-if="gs.manual" class="manual">手动 {{ gs.buffer || "_" }}（Enter 确认）</p>
+        <p v-if="gs.manual" class="manual">Enter 确认 · Esc 取消</p>
         <div class="divider"></div>
         <ul class="preset-list">
           <li v-for="p in presets" :key="p.id"><b>{{ p.slot }}</b> {{ p.label }} <span class="pt">{{ p.points }}</span></li>
         </ul>
-        <div class="comment">
-          <label>评语</label>
+        <div class="comment" :class="{ focused: commentFocused }">
+          <label>评语<span v-if="commentFocused" class="paused">· 评分键已暂停，Esc 恢复</span></label>
           <textarea v-model="commentText" placeholder="本题评语（可选）"
             @focus="commentFocused = true"
+            @keydown.esc="($event.target as HTMLTextAreaElement).blur()"
             @blur="commentFocused = false; saveCurrentComment()"></textarea>
         </div>
       </aside>
@@ -423,7 +432,13 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
 .score .sc-state.Graded { color: var(--ok); background: rgba(127, 221, 170, 0.12); }
 .score .sc-state.Flagged { color: var(--warn); background: rgba(255, 187, 119, 0.12); }
 .score .sc-state.Ungraded { color: var(--text-faint); background: var(--border-subtle); }
-.manual { color: var(--ok); margin: 2px 0; }
+/* 手动输入态：大字变蓝 + 闪烁光标，明示"这是正在敲、还没确认的数" */
+.score .sc-val.typing { color: var(--accent); }
+.score .sc-val .caret { display: inline-block; width: 2px; height: 0.9em; margin-left: 2px;
+  background: var(--accent); vertical-align: -1px; animation: blink 1s step-end infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+.score .sc-state.typing { color: var(--accent); background: rgba(79, 140, 255, 0.14); }
+.manual { color: var(--accent); margin: 2px 0; }
 .divider { height: 1px; background: var(--border-subtle); margin: 10px 0; }
 .preset-list { list-style: none; padding: 0; margin: 0 0 6px; }
 .preset-list li { margin: 3px 0; }
@@ -459,11 +474,14 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
 .rc-body :deep(img) { max-width: 100%; }
 .comment { margin-top: 16px; display: flex; flex-direction: column; gap: 4px; }
 .comment label { font-size: 12px; color: var(--text-faint); }
+.comment .paused { color: var(--warn); margin-left: 4px; }
 .comment textarea {
   width: 100%; min-height: 72px; resize: vertical; box-sizing: border-box;
   background: var(--elevated); color: var(--text-body); border: 1px solid var(--border); padding: 6px;
   font-family: inherit; font-size: 13px;
 }
+/* 获焦时明确"评分键已暂停"：橙色描边呼应提示文字 */
+.comment.focused textarea { border-color: var(--warn); }
 .overview { width: 480px; max-height: 70vh; background: var(--elevated); border: 1px solid var(--border); padding: 16px; overflow: auto; font-family: ui-monospace, monospace; color: var(--text-body); }
 .overview li { cursor: pointer; padding: 2px 0; list-style: none; }
 .overview li.cur { color: var(--ok); }
