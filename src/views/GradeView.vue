@@ -11,6 +11,7 @@ import {
 import GradeSidebar from "../components/GradeSidebar.vue";
 import { marked } from "marked";
 import { humanizeError } from "../errors";
+import { useZoomPan } from "../composables/useZoomPan";
 
 // 题目选择：列出各题，用户选中后载该题队列（不再固定 problemNumber=1）
 const problems = ref<Problem[]>([]);
@@ -25,23 +26,8 @@ const { url: imgUrl, show: showImg } = useImage();
 const commentText = ref("");            // 当前单元评语（textarea 绑定）
 const commentFocused = ref(false);      // 获焦时 onKey 必须放行，不当判分键处理
 
-// 卷面缩放/平移（滚轮缩放、拖拽平移、双击复位）
-const zoom = ref(1);
-const panX = ref(0);
-const panY = ref(0);
-let dragging = false, lastX = 0, lastY = 0;
-function onWheel(e: WheelEvent) {
-  const factor = e.deltaY < 0 ? 1.15 : 1 / 1.15;
-  zoom.value = Math.min(8, Math.max(0.3, zoom.value * factor));
-}
-function onImgDown(e: MouseEvent) { dragging = true; lastX = e.clientX; lastY = e.clientY; }
-function onImgMove(e: MouseEvent) {
-  if (!dragging) return;
-  panX.value += e.clientX - lastX; panY.value += e.clientY - lastY;
-  lastX = e.clientX; lastY = e.clientY;
-}
-function onImgUp() { dragging = false; }
-function resetZoom() { zoom.value = 1; panX.value = 0; panY.value = 0; }
+// 卷面缩放/平移（滚轮缩放、拖拽平移、双击复位）——抽成 useZoomPan 与标注页共用
+const { zoom, panX, panY, onWheel, onDown: onImgDown, onMove: onImgMove, onUp: onImgUp, reset: resetZoom } = useZoomPan();
 
 const current = computed(() => queue.value[gs.value.index]);
 const ctx = computed<GradeCtx>(() => ({

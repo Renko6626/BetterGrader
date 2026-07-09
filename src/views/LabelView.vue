@@ -7,6 +7,10 @@ import { useImage } from "../composables/useImage";
 import { initialLabelState, reduceLabelKey, pickStudent, type LabelState, type LabelEffect } from "../composables/useLabelKeys";
 import { NModal, NInput, NButton, NAlert } from "naive-ui";
 import { humanizeError } from "../errors";
+import { useZoomPan } from "../composables/useZoomPan";
+
+// 卷面缩放/平移（与判分页共用）——认手写姓名/学号需要放大
+const { zoom, panX, panY, onWheel, onDown, onMove, onUp, reset: resetZoom } = useZoomPan();
 
 const pages = ref<PageRow[]>([]);
 const students = ref<Student[]>([]);
@@ -28,6 +32,9 @@ const filteredStudents = computed(() => {
 
 const studentNameOf = (id: number | null) =>
   id == null ? null : (students.value.find(s => s.id === id)?.name ?? `#${id}`);
+// 常驻校验计数：未标注张数 + 页数不符的人数（标注/翻页后自动更新）
+const unlabeledCount = computed(() => summary.value?.unlabeled_pages ?? 0);
+const mismatchCount = computed(() => summary.value?.stacks.filter(s => !s.count_ok).length ?? 0);
 // 本页真实归属（读已标状态，不是 reducer 的手动流状态）
 const curLabel = computed(() => {
   const c = cur.value;
@@ -65,6 +72,7 @@ async function reload() {
     pages.value = await listPages();
     students.value = await listStudents();
     await refreshImage();
+    await refreshSummary(); // 进入即校验，让"未标/不符"常驻可见，不必手动点
   } catch (e) {
     errorMsg.value = humanizeError(e);
   }
@@ -76,6 +84,7 @@ async function refreshImage() {
     errorMsg.value = humanizeError(e);
   }
   syncPageEdit(); // 每次换页同步题号输入框 + 手动流续接
+  resetZoom();    // 换页复位缩放
 }
 async function refreshSummary() {
   try {
@@ -101,6 +110,7 @@ async function applyEffect(eff: LabelEffect, targetPage: PageRow | null) {
       await setPageLabel(targetPage.id, eff.studentId, eff.problemNumber);
       // 本地同步，避免整列重查
       targetPage.student_id = eff.studentId; targetPage.problem_number = eff.problemNumber; targetPage.status = "labeled";
+      await refreshSummary(); // 标注后即时更新常驻校验计数
     } catch (e) {
       errorMsg.value = humanizeError(e);
     }
@@ -148,16 +158,23 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
 <template>
   <section class="label">
     <n-alert v-if="errorMsg" type="error" :title="errorMsg" closable @close="errorMsg=''" />
-    <div v-if="!pages.length" class="empty">没有图片。先在“考试设置”导入图片文件夹。</div>
+    <div v-if="!pages.length" class="empty">还没有卷面。先到「考试设置」导入图片文件夹或 PDF 文件夹。</div>
     <template v-else>
       <div class="pane">
-        <div class="img">
-          <img v-if="url" :src="url" alt="答卷" />
+        <div class="img" @wheel.prevent="onWheel" @mousedown="onDown" @mousemove="onMove"
+             @mouseup="onUp" @mouseleave="onUp" @dblclick="resetZoom">
+          <img v-if="url" :src="url" alt="答卷" draggable="false"
+               :style="{ transform: `translate(${panX}px,${panY}px) scale(${zoom})` }" />
           <div v-else class="ph">（无图/加载中）</div>
         </div>
         <aside class="side">
           <p>第 {{ ls.index + 1 }} / {{ pages.length }} 张</p>
           <p class="cur">本页归属：<b>{{ curLabel }}</b></p>
+          <!-- 手动流状态提升为主显示：下一次 Enter 会派给谁的第几题，一眼可预测 -->
+          <div class="flow">
+            <span class="fl-next">下一题 {{ ls.nextProblem }}</span>
+            <span class="fl-stu">→ {{ studentNameOf(ls.currentStudent) ?? "先按 S 选人" }}</span>
+          </div>
           <div class="edit">
             <label>改本页题号
               <input class="pn" v-model="problemInput" inputmode="numeric"
@@ -168,9 +185,12 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
             <span class="hint">0=姓名页，回车生效，学生不变</span>
           </div>
           <hr class="sep" />
-          <p class="dim">手动流：当前学生 {{ studentNameOf(ls.currentStudent) ?? "—" }}｜下一题 {{ ls.nextProblem }}</p>
-          <p class="keys">[S]姓名页/选人 [Enter]派题 [C]接上题 [N]跳题 [←→]翻页</p>
-          <n-button size="small" @click="refreshSummary">刷新确认总表</n-button>
+          <!-- 常驻校验徽标：不必点按钮就知道还差多少 -->
+          <div class="badge">
+            <span :class="{ warn: unlabeledCount > 0 }">未标 {{ unlabeledCount }} 张</span>
+            <span :class="{ bad: mismatchCount > 0 }">页数不符 {{ mismatchCount }} 人</span>
+          </div>
+          <p class="keys">[S]姓名页/选人 [Enter]派题 [C]接上题 [N]跳题 [←→]翻页 · 滚轮缩放</p>
         </aside>
       </div>
 
@@ -211,12 +231,22 @@ onUnmounted(() => window.removeEventListener("keydown", onKey));
 <style scoped>
 .label { height: 100%; display: flex; flex-direction: column; font-family: ui-monospace, monospace; color: var(--text-body); }
 .pane { flex: 1; display: flex; min-height: 0; }
-.img { flex: 1; display: flex; align-items: center; justify-content: center; overflow: auto; }
-.img img { max-width: 100%; max-height: 100%; }
+.img { flex: 1; display: flex; align-items: center; justify-content: center; overflow: hidden; cursor: grab; }
+.img:active { cursor: grabbing; }
+.img img { max-width: 100%; max-height: 100%; transform-origin: center center; user-select: none; will-change: transform; }
 .ph { border: 1px dashed var(--border); padding: 40px; color: var(--text-faint); }
 .side { width: 260px; border-left: 1px solid var(--border); padding: 12px; }
 .side .cur { font-size: 15px; }
 .side .cur b { color: var(--ok); }
+/* 手动流主状态：下一次 Enter 的结果 */
+.side .flow { margin: 8px 0; padding: 6px 8px; background: var(--elevated); border: 1px solid var(--border-accent); border-radius: var(--r); font-size: 14px; }
+.side .flow .fl-next { color: var(--accent); font-weight: 600; }
+.side .flow .fl-stu { color: var(--text-body); margin-left: 6px; }
+/* 常驻校验徽标 */
+.side .badge { display: flex; gap: 8px; margin: 4px 0 10px; font-size: 12px; }
+.side .badge span { padding: 1px 8px; border-radius: var(--r); background: var(--chip); color: var(--text-dim); }
+.side .badge span.warn { color: var(--warn); }
+.side .badge span.bad { color: var(--err); }
 .side .edit { margin: 8px 0; }
 .side .edit label { display: inline-flex; align-items: center; gap: 6px; }
 .side .pn { width: 56px; background: var(--panel); border: 1px solid var(--border); color: var(--text-body);
